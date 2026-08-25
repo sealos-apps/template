@@ -15,20 +15,29 @@ import path from 'path';
 import { replaceRawWithCDN } from './listTemplate';
 import { getTemplateEnvs } from '@/utils/common';
 import { getResourceUsage, ResourceUsage } from '@/utils/usage';
-import { generateYamlData, getTemplateDefaultValues } from '@/utils/template';
+import {
+  filterConfiguredCategorySlugs,
+  generateYamlData,
+  getTemplateDefaultValues
+} from '@/utils/template';
 import { readmeCache } from '@/utils/readmeCache';
+import {
+  proxyTemplateIconUrls,
+  resolveTemplateAssetUrls,
+  type TemplateRepo
+} from '@/utils/templateAsset';
+import { appendTemplateManifestSources } from '@/services/backend/template-manifests';
+import { getTemplateCategories } from '@/services/backend/template-categories';
+import { ensureTemplateRepoFresh } from '@/services/backend/template-repo';
 import { Config } from '@/config';
-import { resolveTemplateAssetUrls } from '@/utils/templateAsset';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
     const queryIncludeReadme = req.query.includeReadme !== 'false';
-
-    const includeReadme = !Config().template.features.fetchReadme
-      ? 'false'
-      : queryIncludeReadme
-      ? 'true'
-      : 'true';
+    const config = Config();
+    const includeReadme =
+      !config.template.features.fetchReadme || !queryIncludeReadme ? 'false' : 'true';
+    const includeRequirements = req.query.includeRequirements !== 'false';
 
     const { templateName, locale = 'en' } = req.query as {
       templateName: string;
@@ -41,57 +50,44 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         kubeconfig: await authSession(req.headers)
       });
       user_namespace = namespace;
-    } catch (error) {}
+    } catch {}
 
-    const {
-      code,
-      message,
-      dataSource,
-      templateYaml,
-      TemplateEnvs,
-      appYaml,
-      readmeContent,
-      readUrl
-    } = await GetTemplateByName({
+    const result = await GetTemplateByName({
       namespace: user_namespace,
-      templateName: templateName,
+      templateName,
       locale,
       includeReadme
     });
 
-    if (code !== 20000) {
-      return jsonRes(res, { code, message });
-    }
-
-    if (!appYaml || !templateName || !templateYaml || !TemplateEnvs) {
-      return jsonRes(res, {
-        code: 400,
-        message: 'Invalid template request!'
-      });
+    if (result.code !== 20000) return jsonRes(res, { code: result.code, message: result.message });
+    if (!result.appYaml || !templateName || !result.templateYaml || !result.TemplateEnvs) {
+      return jsonRes(res, { code: 400, message: 'Invalid template request!' });
     }
 
     const templateSource = {
       source: {
-        ...dataSource,
-        ...TemplateEnvs
+        ...result.dataSource,
+        ...result.TemplateEnvs
       },
-      appYaml,
-      templateYaml,
-      readmeContent,
-      readUrl
+      appYaml: result.appYaml,
+      templateYaml: result.templateYaml,
+      readmeContent: result.readmeContent,
+      readUrl: result.readUrl
     };
 
     let requirements: ResourceUsage | null = null;
-    try {
-      const platformEnvs = getTemplateEnvs(user_namespace);
-      const renderedYaml = generateYamlData(
-        templateSource,
-        getTemplateDefaultValues(templateSource),
-        platformEnvs
-      );
-      requirements = getResourceUsage(renderedYaml.map((item) => item.value));
-    } catch (error) {
-      console.error(`Error getting default resource requirements for template '${templateName}'`);
+    if (includeRequirements) {
+      try {
+        const platformEnvs = getTemplateEnvs(user_namespace);
+        const renderedYaml = generateYamlData(
+          templateSource,
+          getTemplateDefaultValues(templateSource),
+          platformEnvs
+        );
+        requirements = getResourceUsage(renderedYaml.map((item) => item.value));
+      } catch {
+        console.error(`Error getting default resource requirements for template '${templateName}'`);
+      }
     }
 
     jsonRes(res, {
@@ -101,12 +97,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         requirements
       }
     });
-  } catch (err: any) {
-    console.log(err);
-    jsonRes(res, {
-      code: 500,
-      error: err
-    });
+  } catch (error: any) {
+    console.log(error);
+    jsonRes(res, { code: 500, error });
   }
 }
 
@@ -121,88 +114,45 @@ export async function GetTemplateByName({
   locale?: string;
   includeReadme?: string;
 }) {
+  await ensureTemplateRepoFresh();
+
   const config = Config();
-  const cdnUrl = config.template.cdnHost;
-
+  const categories = getTemplateCategories(config.template.categories);
   const TemplateEnvs = getTemplateEnvs(namespace);
+  const templateRepo: TemplateRepo = config.template.repo;
 
-  const originalPath = process.cwd();
-  const repoRootPath = path.resolve(originalPath, 'templates');
-  const targetPath = path.resolve(repoRootPath, config.template.repo.localDir);
-
-  const jsonPath = path.resolve(originalPath, 'templates.json');
-  const jsonData: TemplateType[] = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
-  const _tempalte = jsonData.find((item) => item.metadata.name === templateName);
-  const _tempalteName = _tempalte ? _tempalte.spec.fileName : `${templateName}.yaml`;
-
-  // Determine the file path to read
-  const templateFilePath = _tempalte?.spec?.filePath || `${targetPath}/${_tempalteName}`;
-
-  // Check if template file exists before reading
-  if (!fs.existsSync(templateFilePath)) {
-    return {
-      code: 40400,
-      message: `Template '${templateName}' not found`
-    };
-  }
-
-  const yamlString = fs.readFileSync(templateFilePath, 'utf-8');
-
-  let { appYaml, templateYaml } = getYamlTemplate(yamlString);
-
-  if (!templateYaml) {
-    return {
-      code: 40000,
-      message: 'Lack of kind template'
-    };
-  }
-  templateYaml.spec.deployCount = _tempalte?.spec?.deployCount;
-  templateYaml = resolveTemplateAssetUrls(templateYaml, {
-    repo: config.template.repo,
-    templateFilePath,
-    repoRootPath
-  });
-
-  if (cdnUrl) {
-    templateYaml.spec.readme = replaceRawWithCDN(templateYaml.spec.readme, cdnUrl);
-    templateYaml.spec.icon = replaceRawWithCDN(templateYaml.spec.icon, cdnUrl);
-    if (templateYaml?.spec?.i18n) {
-      Object.keys(templateYaml?.spec?.i18n || {}).forEach((lang) => {
-        const i18nLang = templateYaml?.spec?.i18n?.[lang];
-        ['readme', 'icon'].forEach((field) => {
-          if (i18nLang?.[field]) {
-            i18nLang[field] = replaceRawWithCDN(i18nLang[field], cdnUrl);
-          }
-        });
-      });
+  let appYaml: string;
+  let templateYaml: TemplateType;
+  try {
+    ({ appYaml, templateYaml } = getTemplateYamlByName(templateName, templateRepo));
+  } catch (error: any) {
+    if (error?.code === 'ENOENT' || error?.code === 'EISDIR') {
+      return { code: 40400, message: `Template '${templateName}' not found` };
     }
+    throw error;
   }
 
-  templateYaml = parseTemplateVariable(templateYaml, TemplateEnvs);
+  templateYaml.spec.categories = filterConfiguredCategorySlugs(
+    templateYaml.spec.categories,
+    categories
+  );
+  templateYaml = proxyTemplateIconUrls(
+    parseTemplateVariable(templateYaml, TemplateEnvs),
+    templateRepo
+  );
+
   const dataSource = getTemplateDataSource(templateYaml);
-
   const instanceName = dataSource?.defaults?.['app_name']?.value;
-  if (!instanceName) {
-    return {
-      code: 40000,
-      message: 'default app_name is missing'
-    };
-  }
+  if (!instanceName) return { code: 40000, message: 'default app_name is missing' };
+
   const instanceYaml = handleTemplateToInstanceYaml(templateYaml, instanceName);
   appYaml = `${JsYaml.dump(instanceYaml)}\n---\n${appYaml}`;
 
   let readmeContent = '';
   let readUrl = '';
-
   if (includeReadme === 'true') {
     readUrl = templateYaml?.spec?.i18n?.[locale]?.readme || templateYaml?.spec?.readme || '';
-    if (readUrl) {
-      try {
-        readmeContent = await fetchReadmeContentWithRetry(readUrl);
-      } catch (error) {
-        readmeContent = '';
-      }
-    }
+    if (readUrl) readmeContent = await fetchReadmeContentWithRetry(readUrl);
   }
 
   return {
@@ -217,18 +167,90 @@ export async function GetTemplateByName({
   };
 }
 
-async function fetchReadmeContentWithRetry(url: string): Promise<string> {
-  if (!url) return '';
-
-  const cachedContent = readmeCache.get(url);
-  if (cachedContent !== null) {
-    return cachedContent;
+export async function GetTemplateReadmeByName({
+  namespace,
+  templateName,
+  locale = 'en'
+}: {
+  namespace: string;
+  templateName: string;
+  locale?: string;
+}) {
+  const config = Config();
+  if (!config.template.features.fetchReadme) {
+    return { code: 20000, message: 'success', readmeContent: '', readUrl: '' };
   }
 
-  let retryCount = 0;
-  const maxRetries = 3;
+  await ensureTemplateRepoFresh();
+  let templateYaml: TemplateType;
+  try {
+    templateYaml = getTemplateYamlByName(templateName, config.template.repo).templateYaml;
+  } catch (error: any) {
+    if (error?.code === 'ENOENT' || error?.code === 'EISDIR') {
+      return { code: 40400, message: `Template '${templateName}' not found` };
+    }
+    throw error;
+  }
+  const parsedTemplate = parseTemplateVariable(templateYaml, getTemplateEnvs(namespace));
+  const readUrl =
+    parsedTemplate?.spec?.i18n?.[locale]?.readme || parsedTemplate?.spec?.readme || '';
+  return {
+    code: 20000,
+    message: 'success',
+    readmeContent: readUrl ? await fetchReadmeContentWithRetry(readUrl) : '',
+    readUrl
+  };
+}
 
-  while (retryCount < maxRetries) {
+function getTemplateYamlByName(templateName: string, templateRepo: TemplateRepo) {
+  const config = Config();
+  const originalPath = process.cwd();
+  const repoRootPath = path.resolve(originalPath, 'templates');
+  const targetPath = path.resolve(repoRootPath, config.template.repo.localDir);
+  const jsonPath = path.resolve(originalPath, 'templates.json');
+  const jsonData: TemplateType[] = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+  const template = jsonData.find((item) => item.metadata.name === templateName);
+  const templateFileName = template?.spec?.fileName || `${templateName}.yaml`;
+  const candidatePath = template?.spec?.filePath || path.resolve(targetPath, templateFileName);
+  const repositoryRoot = fs.realpathSync(repoRootPath);
+  const templateFilePath = fs.realpathSync(candidatePath);
+  const relativePath = path.relative(repositoryRoot, templateFilePath);
+  if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+    throw new Error(`Template path escapes repository root: ${candidatePath}`);
+  }
+
+  const yamlString = fs.readFileSync(templateFilePath, 'utf-8');
+  const parsed = getYamlTemplate(yamlString);
+  const appYaml = appendTemplateManifestSources(parsed.appYaml, templateFilePath, repositoryRoot);
+  let templateYaml = resolveTemplateAssetUrls(parsed.templateYaml, {
+    repo: templateRepo,
+    templateFilePath,
+    repoRootPath: repositoryRoot
+  });
+  templateYaml.spec.deployCount = template?.spec?.deployCount;
+
+  if (config.template.cdnHost) {
+    templateYaml.spec.readme = replaceRawWithCDN(templateYaml.spec.readme, config.template.cdnHost);
+    templateYaml.spec.icon = replaceRawWithCDN(templateYaml.spec.icon, config.template.cdnHost);
+    Object.values(templateYaml.spec.i18n || {}).forEach((i18nData) => {
+      ['readme', 'icon'].forEach((field) => {
+        if (i18nData?.[field]) {
+          i18nData[field] = replaceRawWithCDN(i18nData[field], config.template.cdnHost!);
+        }
+      });
+    });
+  }
+
+  return { appYaml, templateYaml };
+}
+
+async function fetchReadmeContentWithRetry(url: string): Promise<string> {
+  if (!url) return '';
+  const cachedContent = readmeCache.get(url);
+  if (cachedContent !== null) return cachedContent;
+
+  const maxRetries = 3;
+  for (let retryCount = 0; retryCount < maxRetries; retryCount++) {
     try {
       const response = await fetch(url, {
         headers: {
@@ -240,21 +262,16 @@ async function fetchReadmeContentWithRetry(url: string): Promise<string> {
         },
         credentials: 'omit'
       });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const content = await response.text();
       readmeCache.set(url, content);
       return content;
-    } catch (err) {
-      retryCount++;
-      if (retryCount === maxRetries) {
+    } catch (error) {
+      if (retryCount === maxRetries - 1) {
         console.log(`Failed to fetch README from ${url} after ${maxRetries} attempts`);
         return '';
       }
-      await new Promise((resolve) => setTimeout(resolve, retryCount * 1000));
+      await new Promise((resolve) => setTimeout(resolve, (retryCount + 1) * 1000));
     }
   }
   return '';

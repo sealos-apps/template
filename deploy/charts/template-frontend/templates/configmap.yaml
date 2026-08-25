@@ -9,10 +9,10 @@ data:
   config.yaml: |-
     # yaml-language-server: $schema=config.schema.json
     cloud:
-        domain: {{ .Values.templateConfig.cloudDomain | quote }}
-        port: {{ default 443 .Values.templateConfig.cloudPort }}
+        domain: {{ include "template-frontend.cloudDomain" . | quote }}
+        port: {{ if eq (include "template-frontend.scheme" .) "http" }}{{ default 80 (include "template-frontend.httpPort" .) }}{{ else }}{{ default 443 (include "template-frontend.cloudPort" .) }}{{ end }}
         regionUid: ""
-        certSecretName: {{ .Values.templateConfig.certSecretName | quote }}
+        certSecretName: {{ include "template-frontend.certSecretName" . | quote }}
 
     template:
         ui:
@@ -20,7 +20,7 @@ data:
             forcedLanguage: {{ .Values.templateConfig.forcedLanguage | quote }}
             currencySymbol: {{ .Values.templateConfig.currencySymbol | quote }}
             meta:
-                canonicalUrl: https://template.example.org
+                canonicalUrl: {{ include "template-frontend.appUrl" . | quote }}
                 customScripts: []
             carousel:
                 enabled: false
@@ -81,7 +81,7 @@ data:
               i18n:
                   en: Tools
                   zh: 工具
-        desktopDomain: {{ .Values.templateConfig.cloudDomain | quote }}
+        desktopDomain: {{ include "template-frontend.cloudDomain" . | quote }}
         userDomain: {{ .Values.templateConfig.userDomain | quote }}
         billingUrl: {{ .Values.templateConfig.billingUrl | quote }}
         analytics:

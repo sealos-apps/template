@@ -5,6 +5,8 @@ import { jsonRes } from '@/services/backend/response';
 import { TemplateInstanceType } from '@/types/app';
 import { adaptInstanceListItem } from '@/utils/adapt';
 import type { NextApiRequest, NextApiResponse } from 'next';
+import { getTemplateEnvs } from '@/utils/common';
+import { proxyTemplateIconUrls } from '@/utils/templateAsset';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
@@ -20,6 +22,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       plural: 'instances'
     };
 
+    const templateEnvs = getTemplateEnvs();
+    const templateRepo = {
+      url: templateEnvs.TEMPLATE_REPO_URL,
+      branch: templateEnvs.TEMPLATE_REPO_BRANCH
+    };
     const result = await k8sCustomObjects
       .getNamespacedCustomObject(
         InstanceCRD.group,
@@ -28,7 +35,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         InstanceCRD.plural,
         instanceName
       )
-      .then((r) => adaptInstanceListItem(r.body as TemplateInstanceType));
+      .then((r) =>
+        adaptInstanceListItem(proxyTemplateIconUrls(r.body as TemplateInstanceType, templateRepo))
+      );
 
     jsonRes(res, { data: result });
   } catch (err: any) {

@@ -41,14 +41,34 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{- define "template-frontend.scheme" -}}
-{{- if eq (toString .Values.templateConfig.disableHttps) "true" -}}http{{- else -}}https{{- end -}}
+{{- if eq (include "template-frontend.disableHttps" .) "true" -}}http{{- else -}}https{{- end -}}
+{{- end }}
+
+{{- define "template-frontend.cloudDomain" -}}
+{{- default .Values.templateConfig.cloudDomain .Values.cloudDomain -}}
+{{- end }}
+
+{{- define "template-frontend.cloudPort" -}}
+{{- default .Values.templateConfig.cloudPort .Values.cloudPort -}}
+{{- end }}
+
+{{- define "template-frontend.httpPort" -}}
+{{- default .Values.templateConfig.httpPort .Values.httpPort -}}
+{{- end }}
+
+{{- define "template-frontend.disableHttps" -}}
+{{- toString (default .Values.templateConfig.disableHttps .Values.disableHttps) -}}
+{{- end }}
+
+{{- define "template-frontend.certSecretName" -}}
+{{- default .Values.templateConfig.certSecretName .Values.certSecretName -}}
 {{- end }}
 
 {{- define "template-frontend.port" -}}
 {{- $scheme := include "template-frontend.scheme" . -}}
-{{- $port := toString .Values.templateConfig.cloudPort -}}
+{{- $port := toString (include "template-frontend.cloudPort" .) -}}
 {{- if eq $scheme "http" -}}
-{{- $port = toString .Values.templateConfig.httpPort -}}
+{{- $port = toString (include "template-frontend.httpPort" .) -}}
 {{- end -}}
 {{- if or (and (eq $scheme "https") (or (eq $port "") (eq $port "443"))) (and (eq $scheme "http") (or (eq $port "") (eq $port "80"))) -}}
 {{- "" -}}
@@ -68,15 +88,15 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{- define "template-frontend.cloudOrigin" -}}
-{{- include "template-frontend.scheme" . -}}://{{ .Values.templateConfig.cloudDomain }}{{ include "template-frontend.portSuffix" . }}
+{{- include "template-frontend.scheme" . -}}://{{ include "template-frontend.cloudDomain" . }}{{ include "template-frontend.portSuffix" . }}
 {{- end }}
 
 {{- define "template-frontend.wildcardCloudOrigin" -}}
-{{- include "template-frontend.scheme" . -}}://*.{{ .Values.templateConfig.cloudDomain }}{{ include "template-frontend.portSuffix" . }}
+{{- include "template-frontend.scheme" . -}}://*.{{ include "template-frontend.cloudDomain" . }}{{ include "template-frontend.portSuffix" . }}
 {{- end }}
 
 {{- define "template-frontend.host" -}}
-{{- default (printf "template.%s" .Values.templateConfig.cloudDomain) .Values.ingress.host -}}
+{{- default (printf "template.%s" (include "template-frontend.cloudDomain" .)) .Values.ingress.host -}}
 {{- end }}
 
 {{- define "template-frontend.appUrl" -}}

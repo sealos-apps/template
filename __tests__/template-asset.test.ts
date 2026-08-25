@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { replaceRawWithCDN } from '@/pages/api/listTemplate';
-import { resolveTemplateAssetUrl, resolveTemplateAssetUrls } from '@/utils/templateAsset';
+import {
+  getTemplateAssetProxyUrl,
+  proxyTemplateIconUrls,
+  resolveTemplateAssetUrl,
+  resolveTemplateAssetUrls
+} from '@/utils/templateAsset';
 import type { TemplateType } from '@/types/app';
 
 const repo = {
@@ -71,6 +76,17 @@ describe('template asset URL resolution', () => {
     ).toBe('https://example.com/logo.png');
   });
 
+  it('does not resolve a relative asset outside the repository root', () => {
+    expect(
+      resolveTemplateAssetUrl({
+        assetUrl: '../../../outside/logo.png',
+        repo,
+        templateFilePath: `${repoRootPath}/template/appsmith/index.yaml`,
+        repoRootPath
+      })
+    ).toBe('../../../outside/logo.png');
+  });
+
   it('resolves i18n readme and icon URLs', () => {
     const template = resolveTemplateAssetUrls(
       createTemplate({
@@ -114,5 +130,45 @@ describe('template asset URL resolution', () => {
     expect(replaceRawWithCDN(rawUrl, 'cdn.jsdelivr.net')).toBe(
       'https://cdn.jsdelivr.net/gh/labring-actions/templates@main/template/appsmith/README.md'
     );
+  });
+
+  it('uses the local proxy for repository icons and preserves i18n icons', () => {
+    const template = proxyTemplateIconUrls(
+      createTemplate({
+        icon: 'https://gogs.example.com/team/templates/raw/main/app/static/logo.svg',
+        i18n: {
+          zh: {
+            icon: 'https://gogs.example.com/team/templates/raw/main/app/static/logo-zh.png'
+          }
+        }
+      }),
+      { url: 'https://gogs.example.com/team/templates', branch: 'main' }
+    );
+
+    expect(template.spec.icon).toBe('/api/templateAsset?path=app%2Fstatic%2Flogo.svg');
+    expect(template.spec.i18n?.zh.icon).toBe('/api/templateAsset?path=app%2Fstatic%2Flogo-zh.png');
+  });
+
+  it('does not proxy another branch or traversal-like icon path', () => {
+    const repoUrl = { url: 'https://gogs.example.com/team/templates', branch: 'main' };
+    expect(
+      getTemplateAssetProxyUrl(
+        'https://gogs.example.com/team/templates/raw/release/app/logo.svg',
+        repoUrl
+      )
+    ).toContain('/raw/release/');
+    expect(
+      getTemplateAssetProxyUrl(
+        'https://gogs.example.com/team/templates/raw/main/%2e%2e/secret/logo.svg',
+        repoUrl
+      )
+    ).toBe('https://gogs.example.com/team/templates/raw/main/%2e%2e/secret/logo.svg');
+  });
+
+  it('does not proxy a matching repository path from another origin', () => {
+    const repoUrl = { url: 'https://gogs.example.com/team/templates', branch: 'main' };
+    const assetUrl = 'https://untrusted.example.com/team/templates/raw/main/app/logo.svg';
+
+    expect(getTemplateAssetProxyUrl(assetUrl, repoUrl)).toBe(assetUrl);
   });
 });

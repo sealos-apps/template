@@ -8,6 +8,16 @@ fullnameOverride: "template-frontend"
 
 replicaCount: 1
 
+cloudDomain: ""
+cloudPort: ""
+httpPort: ""
+disableHttps: false
+certSecretName: ""
+
+platform:
+  # 1 rejects untrusted certificates; the entrypoint switches to 0 for trusted cloud certs.
+  tlsRejectUnauthorized: "1"
+
 podAnnotations: {}
 podLabels: {}
 
@@ -33,6 +43,7 @@ ingress:
   annotations: {}
 
 templateConfig:
+  # Deprecated aliases retained for values files from the extracted provider.
   cloudDomain: "127.0.0.1.nip.io"
   cloudPort: ""
   httpPort: ""

@@ -7,13 +7,18 @@ CHART_PATH=${CHART_PATH:-"./charts/template-frontend"}
 HELM_OPTS=${HELM_OPTS:-""}
 HELM_OPTIONS=${HELM_OPTIONS:-""}
 AUTO_CONFIG_HELM_OPTS=""
+TOOLS_FILE=${TOOLS_FILE:-"/root/.sealos/cloud/scripts/tools.sh"}
 
-get_cm_value() {
-  local namespace="$1"
-  local name="$2"
-  local key="$3"
-  kubectl get configmap "${name}" -n "${namespace}" -o "jsonpath={.data.${key}}" 2>/dev/null || true
-}
+if [ -f "${TOOLS_FILE}" ]; then
+  if [ "${TOOLS_FILE}" = "/root/.sealos/cloud/scripts/tools.sh" ]; then
+    # shellcheck source=/root/.sealos/cloud/scripts/tools.sh
+    source /root/.sealos/cloud/scripts/tools.sh
+  else
+    source "${TOOLS_FILE}"
+  fi
+else
+  echo "Warning: platform tools file not found at ${TOOLS_FILE}; platform defaults must be supplied explicitly." >&2
+fi
 
 add_set_string() {
   local key="$1"
@@ -23,16 +28,41 @@ add_set_string() {
   fi
 }
 
+GLOBAL_HTTP_EXTERNAL_URL="$(global_http_external_url 2>/dev/null || true)"
 SEALOS_CLOUD_DOMAIN=${SEALOS_CLOUD_DOMAIN:-"${cloudDomain:-$(get_cm_value sealos-system sealos-config cloudDomain)}"}
+if [ -z "${SEALOS_CLOUD_DOMAIN}" ] && [ -n "${GLOBAL_HTTP_EXTERNAL_URL}" ]; then
+  SEALOS_CLOUD_DOMAIN="${GLOBAL_HTTP_EXTERNAL_URL#*://}"
+  SEALOS_CLOUD_DOMAIN="${SEALOS_CLOUD_DOMAIN%%/*}"
+  SEALOS_CLOUD_DOMAIN="${SEALOS_CLOUD_DOMAIN%%:*}"
+fi
 add_set_string templateConfig.cloudDomain "${SEALOS_CLOUD_DOMAIN}"
+add_set_string cloudDomain "${SEALOS_CLOUD_DOMAIN}"
 SEALOS_CLOUD_PORT=${SEALOS_CLOUD_PORT:-"${cloudPort:-$(get_cm_value sealos-system sealos-config cloudPort)}"}
 add_set_string templateConfig.cloudPort "${SEALOS_CLOUD_PORT}"
+add_set_string cloudPort "${SEALOS_CLOUD_PORT}"
 SEALOS_HTTP_PORT=${SEALOS_HTTP_PORT:-"${httpPort:-$(get_cm_value sealos-system sealos-config httpPort)}"}
 add_set_string templateConfig.httpPort "${SEALOS_HTTP_PORT}"
+add_set_string httpPort "${SEALOS_HTTP_PORT}"
 SEALOS_DISABLE_HTTPS=${SEALOS_DISABLE_HTTPS:-"${disableHttps:-$(get_cm_value sealos-system sealos-config disableHttps)}"}
 add_set_string templateConfig.disableHttps "${SEALOS_DISABLE_HTTPS}"
+add_set_string disableHttps "${SEALOS_DISABLE_HTTPS}"
 SEALOS_CERT_SECRET_NAME=${SEALOS_CERT_SECRET_NAME:-"${certSecretName:-$(get_cm_value sealos-system sealos-config certSecretName)}"}
 add_set_string templateConfig.certSecretName "${SEALOS_CERT_SECRET_NAME}"
+add_set_string certSecretName "${SEALOS_CERT_SECRET_NAME}"
+
+TLS_REJECT_UNAUTHORIZED="$(read_cert_tls_reject_unauthorized 2>/dev/null || true)"
+if [ -z "${TLS_REJECT_UNAUTHORIZED}" ]; then
+  CERT_MODE=${CERT_MODE:-"$(kubectl get configmap cert-config -n sealos-system -o 'jsonpath={.data.CERT_MODE}' 2>/dev/null || true)"}
+  TLS_REJECT_UNAUTHORIZED=1
+  case "${CERT_MODE}" in
+    https|acme)
+      TLS_REJECT_UNAUTHORIZED=0
+      ;;
+  esac
+fi
+# Helm --set-string platform.tlsRejectUnauthorized=${TLS_REJECT_UNAUTHORIZED}
+AUTO_CONFIG_HELM_OPTS="${AUTO_CONFIG_HELM_OPTS} --set-string platform.tlsRejectUnauthorized=${TLS_REJECT_UNAUTHORIZED}"
+
 add_set_string templateConfig.userDomain "${userDomain:-}"
 add_set_string templateConfig.templateRepoUrl "${templateRepoUrl:-}"
 add_set_string templateConfig.templateRepoBranch "${templateRepoBranch:-}"
@@ -82,17 +112,23 @@ adopt_cluster_resource clusterrole template-frontend-static-role
 adopt_cluster_resource clusterrolebinding template-frontend-static-role-binding
 
 SERVICE_NAME="template-frontend"
-USER_VALUES_PATH="/root/.sealos/cloud/values/core/${SERVICE_NAME}-values.yaml"
+USER_VALUES_DIR="/root/.sealos/cloud/values/apps/${SERVICE_NAME}"
+DEFAULT_VALUES_PATH="./charts/template-frontend/template-frontend-values.yaml"
 
-if [ ! -f "${USER_VALUES_PATH}" ]; then
-  mkdir -p "$(dirname "${USER_VALUES_PATH}")"
-  cp "./charts/template-frontend/template-frontend-values.yaml" "${USER_VALUES_PATH}"
+if [ ! -d "${USER_VALUES_DIR}" ]; then
+  echo "WARN: ${USER_VALUES_DIR} does not exist; creating it with the chart defaults." >&2
+  mkdir -p "${USER_VALUES_DIR}"
+  cp "${DEFAULT_VALUES_PATH}" "${USER_VALUES_DIR}/template-frontend-values.yaml"
 fi
+
+HELM_VALUE_ARGS=(-f "./charts/template-frontend/values.yaml")
+while IFS= read -r values_file; do
+  HELM_VALUE_ARGS+=(-f "${values_file}")
+done < <(find "${USER_VALUES_DIR}" -maxdepth 1 -type f -name '*-values.yaml' -print | sort)
 
 HELM_ARGS="${AUTO_CONFIG_HELM_OPTS} ${HELM_OPTIONS} ${HELM_OPTS}"
 
 echo "Deploying Helm chart..."
 helm upgrade -i "${RELEASE_NAME}" -n "${RELEASE_NAMESPACE}" --create-namespace "${CHART_PATH}" \
-  -f "./charts/template-frontend/values.yaml" \
-  -f "${USER_VALUES_PATH}" \
+  "${HELM_VALUE_ARGS[@]}" \
   ${HELM_ARGS}

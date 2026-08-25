@@ -5,6 +5,12 @@ import path from 'path';
 import { getCachedTemplates } from './templateCache';
 import { Config } from '@/config';
 import { sendError, ErrorType, ErrorCode } from '@/types/v2alpha/error';
+import { ensureTemplateRepoFresh } from '@/services/backend/template-repo';
+import {
+  createTemplateCatalogEtag,
+  getTemplateCatalogVersion,
+  getTemplateCategories
+} from '@/services/backend/template-categories';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') {
@@ -25,13 +31,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   res.setHeader('ETag', `"template-list-${language}"`);
 
   try {
+    await ensureTemplateRepoFresh(originalPath);
     // Use shared cache instead of directly reading templates
     const config = Config();
+    const categories = getTemplateCategories(config.template.categories);
+    const catalogVersion = getTemplateCatalogVersion(originalPath);
     const cacheResult = getCachedTemplates(
       jsonPath,
       config.template.cdnHost,
-      config.template.categories,
-      language
+      categories,
+      language,
+      config.template.repo,
+      catalogVersion
     );
     const templates = cacheResult.data;
 
@@ -55,7 +66,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       };
     });
 
-    const menuKeys = getCategorySlugs(config.template.categories);
+    const menuKeys = getCategorySlugs(categories);
+
+    res.setHeader('ETag', createTemplateCatalogEtag(['v2alpha-list', language, catalogVersion]));
 
     // Add menuKeys as response header if needed
     if (menuKeys.length > 0) {
