@@ -61,11 +61,20 @@ function parseTemplateCategories(content: string, source: string): TemplateCateg
   return result.data;
 }
 
-export function readTemplateCategoriesFile(filePath: string): TemplateCategory[] | null {
-  if (!fs.existsSync(filePath)) return null;
-
+function readRegularFile(filePath: string) {
+  const fileDescriptor = fs.openSync(filePath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
   try {
-    return parseTemplateCategories(fs.readFileSync(filePath, 'utf-8'), filePath);
+    if (!fs.fstatSync(fileDescriptor).isFile()) return null;
+    return fs.readFileSync(fileDescriptor, 'utf-8');
+  } finally {
+    fs.closeSync(fileDescriptor);
+  }
+}
+
+export function readTemplateCategoriesFile(filePath: string): TemplateCategory[] | null {
+  try {
+    const content = readRegularFile(filePath);
+    return content === null ? null : parseTemplateCategories(content, filePath);
   } catch (error) {
     console.warn('[Template Categories] Failed to read categories:', error);
     return null;
@@ -119,15 +128,16 @@ export function syncTemplateCategoriesFromRepo(repoRootPath: string, basePath = 
 
 export function readTemplateCategoriesFromCache(basePath = process.cwd()) {
   const cachePath = getTemplateCategoriesCachePath(basePath);
-  if (!fs.existsSync(cachePath)) return null;
 
   try {
-    const cacheStat = fs.lstatSync(cachePath);
-    if (!cacheStat.isFile() || cacheStat.isSymbolicLink()) {
-      throw new Error(`Invalid template categories cache file: ${cachePath}`);
+    const content = readRegularFile(cachePath);
+    if (content === null) {
+      removeTemplateCategoriesCache(cachePath);
+      return null;
     }
-    return parseTemplateCategories(fs.readFileSync(cachePath, 'utf-8'), cachePath);
+    return parseTemplateCategories(content, cachePath);
   } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') return null;
     removeTemplateCategoriesCache(cachePath);
     console.warn('[Template Categories] Failed to read cache categories:', error);
     return null;

@@ -24,6 +24,12 @@ generates `templates.json`. A successful refresh also synchronizes a validated
 The development server reads `data/config.local.yaml` through the Next.js
 instrumentation hook.
 
+Install dependencies with the checked-in pnpm lockfile:
+
+```bash
+pnpm install --frozen-lockfile
+```
+
 ```bash
 pnpm dev
 pnpm test:ci
@@ -31,9 +37,13 @@ pnpm test:components:ci
 pnpm build
 ```
 
-The package currently retains `workspace:^` references to shared Sealos frontend
-packages. Standalone installation therefore requires those workspace packages to be
-available, or a packaging step that replaces them with published/local snapshots.
+The extracted app store uses the published Sealos SDK packages pinned in
+`package.json`, so it can be installed outside the source monorepo. The Rybbit
+analytics integration remains local because the published GTM SDK currently exposes
+only the GTM dataLayer and GTM script component.
+
+The repository `.npmrc` keeps npm installs compatible with the current shared SDK
+metadata; pnpm remains the canonical package manager for the checked-in lockfile.
 
 ## API checkpoints
 
@@ -64,4 +74,6 @@ configuration look unready. Platform HTTP/HTTPS values are accepted at the chart
 root (`cloudDomain`, `cloudPort`, `httpPort`, `disableHttps`, and `certSecretName`);
 the legacy nested aliases remain supported. The entrypoint reads user overrides
 from `/root/.sealos/cloud/values/apps/template-frontend/*-values.yaml` in sorted
-order and derives Node TLS verification from the platform certificate mode.
+order and derives Node TLS verification from the platform certificate mode. Existing
+`/root/.sealos/cloud/values/core/template-frontend-values.yaml` values are loaded for
+backward compatibility and copied into the canonical `apps` directory when needed.

@@ -86,7 +86,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         );
         requirements = getResourceUsage(renderedYaml.map((item) => item.value));
       } catch {
-        console.error(`Error getting default resource requirements for template '${templateName}'`);
+        console.error('Error getting default resource requirements for template');
       }
     }
 
@@ -97,9 +97,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         requirements
       }
     });
-  } catch (error: any) {
-    console.log(error);
-    jsonRes(res, { code: 500, error });
+  } catch {
+    console.error('[Template Source] Failed to load template source');
+    jsonRes(res, { code: 500, message: 'Internal Server Error' });
   }
 }
 
@@ -209,13 +209,19 @@ function getTemplateYamlByName(templateName: string, templateRepo: TemplateRepo)
   const targetPath = path.resolve(repoRootPath, config.template.repo.localDir);
   const jsonPath = path.resolve(originalPath, 'templates.json');
   const jsonData: TemplateType[] = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
-  const template = jsonData.find((item) => item.metadata.name === templateName);
-  const templateFileName = template?.spec?.fileName || `${templateName}.yaml`;
-  const candidatePath = template?.spec?.filePath || path.resolve(targetPath, templateFileName);
+  const template = getTemplateCatalogEntry(jsonData, templateName);
+  const candidatePath = template.spec.filePath || path.resolve(targetPath, template.spec.fileName);
   const repositoryRoot = fs.realpathSync(repoRootPath);
+  const templateRoot = fs.realpathSync(targetPath);
   const templateFilePath = fs.realpathSync(candidatePath);
   const relativePath = path.relative(repositoryRoot, templateFilePath);
-  if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+  const relativeTemplatePath = path.relative(templateRoot, templateFilePath);
+  if (
+    relativePath.startsWith('..') ||
+    path.isAbsolute(relativePath) ||
+    relativeTemplatePath.startsWith('..') ||
+    path.isAbsolute(relativeTemplatePath)
+  ) {
     throw new Error(`Template path escapes repository root: ${candidatePath}`);
   }
 
@@ -244,6 +250,15 @@ function getTemplateYamlByName(templateName: string, templateRepo: TemplateRepo)
   return { appYaml, templateYaml };
 }
 
+export function getTemplateCatalogEntry(templates: readonly TemplateType[], templateName: string) {
+  const template = templates.find((item) => item.metadata.name === templateName);
+  if (template) return template;
+
+  const error = new Error(`Template '${templateName}' not found`);
+  (error as NodeJS.ErrnoException).code = 'ENOENT';
+  throw error;
+}
+
 async function fetchReadmeContentWithRetry(url: string): Promise<string> {
   if (!url) return '';
   const cachedContent = readmeCache.get(url);
@@ -268,7 +283,7 @@ async function fetchReadmeContentWithRetry(url: string): Promise<string> {
       return content;
     } catch (error) {
       if (retryCount === maxRetries - 1) {
-        console.log(`Failed to fetch README from ${url} after ${maxRetries} attempts`);
+        console.log(`Failed to fetch README after ${maxRetries} attempts`);
         return '';
       }
       await new Promise((resolve) => setTimeout(resolve, (retryCount + 1) * 1000));

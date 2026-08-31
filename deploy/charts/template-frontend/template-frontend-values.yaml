@@ -6,7 +6,7 @@ replicaCount: 1
 cloudDomain: ""
 cloudPort: ""
 httpPort: ""
-disableHttps: false
+disableHttps: ""
 certSecretName: ""
 
 platform:
@@ -24,7 +24,7 @@ templateConfig:
   userDomain: ""
   templateRepoUrl: "https://github.com/labring-actions/templates"
   templateRepoBranch: "main"
-  templateRepoPath: "templates"
+  templateRepoPath: "template"
   guideEnabled: true
   billingUrl: "http://account-service.account-system.svc:2333"
   enableReadmeFetch: true

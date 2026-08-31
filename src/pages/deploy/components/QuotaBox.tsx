@@ -1,14 +1,12 @@
 import React, { useMemo } from 'react';
-import { Box, Flex, useTheme, Progress, css, Text } from '@chakra-ui/react';
+import { Box, Flex, Progress, Text, Tooltip as MyTooltip, css, useTheme } from '@chakra-ui/react';
 import { useTranslation } from 'next-i18next';
-import { MyTooltip } from '@sealos/ui';
-
 import {
   useUserQuota,
   resourcePropertyMap,
   formatResourceQuotaValue,
   type WorkspaceQuotaItem
-} from '@sealos/shared';
+} from '@labring/sealos-shared-sdk';
 
 const sourceMap = {
   cpu: {

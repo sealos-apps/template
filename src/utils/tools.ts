@@ -60,12 +60,13 @@ export function downLoadBold(content: BlobPart, type: string, fileName: string) 
 }
 
 export function deepSearch(obj: any): string {
-  if (has(obj, 'message')) {
-    return obj.message;
+  const object = obj as Record<string, unknown>;
+  if (has(object, 'message')) {
+    return object.message as string;
   }
-  for (let key in obj) {
-    if (isObject(obj[key])) {
-      let message = deepSearch(obj[key]);
+  for (const key of Object.keys(object)) {
+    if (isObject(object[key])) {
+      const message = deepSearch(object[key]);
       if (message) {
         return message;
       }

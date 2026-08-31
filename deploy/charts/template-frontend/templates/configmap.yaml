@@ -29,7 +29,7 @@ data:
         repo:
             url: {{ .Values.templateConfig.templateRepoUrl | quote }}
             branch: {{ .Values.templateConfig.templateRepoBranch | quote }}
-            localDir: template
+            localDir: {{ .Values.templateConfig.templateRepoPath | quote }}
 
         features:
             fetchReadme: {{ .Values.templateConfig.enableReadmeFetch }}

@@ -20,6 +20,20 @@ else
   echo "Warning: platform tools file not found at ${TOOLS_FILE}; platform defaults must be supplied explicitly." >&2
 fi
 
+# Older platform images may not ship tools.sh. Keep environment-provided
+# values usable and make the ConfigMap lookup an optional fallback without
+# shadowing the platform helper when it is available.
+read_platform_config_value() {
+  local namespace="$1"
+  local name="$2"
+  local key="$3"
+  if declare -F get_cm_value >/dev/null 2>&1; then
+    get_cm_value "${namespace}" "${name}" "${key}" || true
+  elif command -v kubectl >/dev/null 2>&1; then
+    kubectl get configmap "${name}" -n "${namespace}" -o "jsonpath={.data.${key}}" 2>/dev/null || true
+  fi
+}
+
 add_set_string() {
   local key="$1"
   local value="$2"
@@ -29,7 +43,7 @@ add_set_string() {
 }
 
 GLOBAL_HTTP_EXTERNAL_URL="$(global_http_external_url 2>/dev/null || true)"
-SEALOS_CLOUD_DOMAIN=${SEALOS_CLOUD_DOMAIN:-"${cloudDomain:-$(get_cm_value sealos-system sealos-config cloudDomain)}"}
+SEALOS_CLOUD_DOMAIN=${SEALOS_CLOUD_DOMAIN:-"${cloudDomain:-$(read_platform_config_value sealos-system sealos-config cloudDomain)}"}
 if [ -z "${SEALOS_CLOUD_DOMAIN}" ] && [ -n "${GLOBAL_HTTP_EXTERNAL_URL}" ]; then
   SEALOS_CLOUD_DOMAIN="${GLOBAL_HTTP_EXTERNAL_URL#*://}"
   SEALOS_CLOUD_DOMAIN="${SEALOS_CLOUD_DOMAIN%%/*}"
@@ -37,16 +51,16 @@ if [ -z "${SEALOS_CLOUD_DOMAIN}" ] && [ -n "${GLOBAL_HTTP_EXTERNAL_URL}" ]; then
 fi
 add_set_string templateConfig.cloudDomain "${SEALOS_CLOUD_DOMAIN}"
 add_set_string cloudDomain "${SEALOS_CLOUD_DOMAIN}"
-SEALOS_CLOUD_PORT=${SEALOS_CLOUD_PORT:-"${cloudPort:-$(get_cm_value sealos-system sealos-config cloudPort)}"}
+SEALOS_CLOUD_PORT=${SEALOS_CLOUD_PORT:-"${cloudPort:-$(read_platform_config_value sealos-system sealos-config cloudPort)}"}
 add_set_string templateConfig.cloudPort "${SEALOS_CLOUD_PORT}"
 add_set_string cloudPort "${SEALOS_CLOUD_PORT}"
-SEALOS_HTTP_PORT=${SEALOS_HTTP_PORT:-"${httpPort:-$(get_cm_value sealos-system sealos-config httpPort)}"}
+SEALOS_HTTP_PORT=${SEALOS_HTTP_PORT:-"${httpPort:-$(read_platform_config_value sealos-system sealos-config httpPort)}"}
 add_set_string templateConfig.httpPort "${SEALOS_HTTP_PORT}"
 add_set_string httpPort "${SEALOS_HTTP_PORT}"
-SEALOS_DISABLE_HTTPS=${SEALOS_DISABLE_HTTPS:-"${disableHttps:-$(get_cm_value sealos-system sealos-config disableHttps)}"}
+SEALOS_DISABLE_HTTPS=${SEALOS_DISABLE_HTTPS:-"${disableHttps:-$(read_platform_config_value sealos-system sealos-config disableHttps)}"}
 add_set_string templateConfig.disableHttps "${SEALOS_DISABLE_HTTPS}"
 add_set_string disableHttps "${SEALOS_DISABLE_HTTPS}"
-SEALOS_CERT_SECRET_NAME=${SEALOS_CERT_SECRET_NAME:-"${certSecretName:-$(get_cm_value sealos-system sealos-config certSecretName)}"}
+SEALOS_CERT_SECRET_NAME=${SEALOS_CERT_SECRET_NAME:-"${certSecretName:-$(read_platform_config_value sealos-system sealos-config certSecretName)}"}
 add_set_string templateConfig.certSecretName "${SEALOS_CERT_SECRET_NAME}"
 add_set_string certSecretName "${SEALOS_CERT_SECRET_NAME}"
 
@@ -113,15 +127,38 @@ adopt_cluster_resource clusterrolebinding template-frontend-static-role-binding
 
 SERVICE_NAME="template-frontend"
 USER_VALUES_DIR="/root/.sealos/cloud/values/apps/${SERVICE_NAME}"
+LEGACY_VALUES_PATH="/root/.sealos/cloud/values/core/${SERVICE_NAME}-values.yaml"
 DEFAULT_VALUES_PATH="./charts/template-frontend/template-frontend-values.yaml"
+DEFAULT_USER_VALUES_PATH="${USER_VALUES_DIR}/${SERVICE_NAME}-values.yaml"
+
+copy_default_values() {
+  if [ -f "${LEGACY_VALUES_PATH}" ]; then
+    echo "WARN: copying legacy values from ${LEGACY_VALUES_PATH} to ${DEFAULT_USER_VALUES_PATH}." >&2
+    cp "${LEGACY_VALUES_PATH}" "${DEFAULT_USER_VALUES_PATH}"
+  else
+    echo "WARN: copying chart defaults to ${DEFAULT_USER_VALUES_PATH}." >&2
+    cp "${DEFAULT_VALUES_PATH}" "${DEFAULT_USER_VALUES_PATH}"
+  fi
+}
 
 if [ ! -d "${USER_VALUES_DIR}" ]; then
-  echo "WARN: ${USER_VALUES_DIR} does not exist; creating it with the chart defaults." >&2
+  echo "WARN: /root/.sealos/cloud/values/apps/${SERVICE_NAME} does not exist; creating it with the chart defaults." >&2
   mkdir -p "${USER_VALUES_DIR}"
-  cp "${DEFAULT_VALUES_PATH}" "${USER_VALUES_DIR}/template-frontend-values.yaml"
+  copy_default_values
+elif ! find "${USER_VALUES_DIR}" -maxdepth 1 -type f -name '*-values.yaml' -print -quit | grep -q .; then
+  echo "WARN: /root/.sealos/cloud/values/apps/${SERVICE_NAME} has no *-values.yaml file; writing defaults." >&2
+  copy_default_values
+elif [ -f "${LEGACY_VALUES_PATH}" ] && [ -f "${DEFAULT_USER_VALUES_PATH}" ] && cmp -s "${DEFAULT_USER_VALUES_PATH}" "${DEFAULT_VALUES_PATH}"; then
+  # A previous run may have created the canonical default before this
+  # compatibility path was added. Preserve the existing custom values.
+  echo "WARN: migrating legacy values from ${LEGACY_VALUES_PATH}..." >&2
+  cp "${LEGACY_VALUES_PATH}" "${DEFAULT_USER_VALUES_PATH}"
 fi
 
 HELM_VALUE_ARGS=(-f "./charts/template-frontend/values.yaml")
+if [ -f "${LEGACY_VALUES_PATH}" ]; then
+  HELM_VALUE_ARGS+=(-f "${LEGACY_VALUES_PATH}")
+fi
 while IFS= read -r values_file; do
   HELM_VALUE_ARGS+=(-f "${values_file}")
 done < <(find "${USER_VALUES_DIR}" -maxdepth 1 -type f -name '*-values.yaml' -print | sort)

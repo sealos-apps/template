@@ -31,8 +31,8 @@ describe('template manifest sources', () => {
   it('collects nested YAML manifests and appends them in stable order', () => {
     const { root, templateDir, templateFile } = createFixture();
     expect(getTemplateManifestFiles(templateFile, root)).toEqual([
-      path.join(templateDir, 'manifests', 'nested', 'config.yml'),
-      path.join(templateDir, 'manifests', 'service.yaml')
+      fs.realpathSync(path.join(templateDir, 'manifests', 'nested', 'config.yml')),
+      fs.realpathSync(path.join(templateDir, 'manifests', 'service.yaml'))
     ]);
     expect(appendTemplateManifestSources('kind: Instance', templateFile, root)).toBe(
       'kind: Instance\n---\nkind: ConfigMap\n---\nkind: Service'

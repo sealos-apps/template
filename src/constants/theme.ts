@@ -5,9 +5,46 @@ import {
   defineStyleConfig,
   extendTheme
 } from '@chakra-ui/react';
-import { theme as sealosTheme } from '@sealos/ui';
 // @ts-ignore
 import { modalAnatomy, selectAnatomy, switchAnatomy } from '@chakra-ui/anatomy';
+
+// Keep the Chakra tokens used by the extracted app local. The published UI SDK
+// now contains shadcn components and no longer exports the legacy Chakra theme.
+const sealosTheme = {
+  colors: {
+    grayModern: {
+      '05': 'rgba(17, 24, 36, 0.05)',
+      1: 'rgba(17, 24, 36, 0.1)',
+      15: 'rgba(17, 24, 36, 0.15)',
+      25: '#FBFBFC',
+      50: '#F7F8FA',
+      100: '#F4F4F7',
+      150: '#F0F1F6',
+      200: '#E8EBF0',
+      250: '#DFE2EA',
+      300: '#C4CBD7',
+      400: '#8A95A7',
+      500: '#667085',
+      600: '#485264',
+      700: '#383F50',
+      800: '#1D2532',
+      900: '#111824'
+    },
+    brightBlue: {
+      25: '#F9FDFE',
+      50: '#F0FBFF',
+      100: '#DBF3FF',
+      200: '#BCE7FF',
+      300: '#85CCFF',
+      400: '#47B2FF',
+      500: '#219BF4',
+      600: '#0884DD',
+      700: '#0770BC',
+      800: '#005B9C',
+      900: '#004B82'
+    }
+  }
+};
 const { definePartsStyle: selectPart, defineMultiStyleConfig: selectMultiStyle } =
   createMultiStyleConfigHelpers(selectAnatomy.keys);
 const { definePartsStyle: switchPart, defineMultiStyleConfig: switchMultiStyle } =

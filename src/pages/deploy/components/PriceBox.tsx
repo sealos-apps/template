@@ -1,10 +1,11 @@
 import React from 'react';
-import { Box, Center, Flex, Divider } from '@chakra-ui/react';
+import { Box, Center, Divider, Flex } from '@chakra-ui/react';
 import { useTranslation } from 'next-i18next';
 import { Text } from '@chakra-ui/react';
 import { useUserStore } from '@/store/user';
 import MyIcon from '@/components/Icon';
-import { CurrencySymbol, MyTooltip } from '@sealos/ui';
+import { CurrencySymbol } from '@labring/sealos-ui';
+import MyTooltip from '@/components/MyTooltip';
 import { type ResourceUsage } from '@/utils/usage';
 import { PriceIcon } from '@/components/icons/PriceIcon';
 import { useClientAppConfig } from '@/hooks/useClientAppConfig';

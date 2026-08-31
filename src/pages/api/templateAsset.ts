@@ -41,7 +41,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const assetPath = getAssetPath(req.query.path);
     const templateRoot = fs.realpathSync(path.resolve(process.cwd(), 'templates'));
     const resolvedPath = getSafeAssetPath(templateRoot, assetPath);
-    if (!resolvedPath || !fs.existsSync(resolvedPath)) {
+    if (!resolvedPath) {
       return res.status(404).end('Asset not found');
     }
 
@@ -50,18 +50,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(403).end('Forbidden');
     }
 
-    const stats = fs.statSync(realResolvedPath);
-    if (!stats.isFile()) return res.status(404).end('Asset not found');
+    // Read only from the descriptor that was opened after the containment check.
+    // This keeps a later path replacement from changing the file returned here.
+    const fileDescriptor = fs.openSync(
+      realResolvedPath,
+      fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW
+    );
 
-    const contentType = MIME_TYPES[path.extname(realResolvedPath).toLowerCase()];
-    if (!contentType) return res.status(415).end('Unsupported asset type');
+    try {
+      const stats = fs.fstatSync(fileDescriptor);
+      if (!stats.isFile()) return res.status(404).end('Asset not found');
 
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=600');
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    if (req.method === 'HEAD') return res.status(200).end();
+      const contentType = MIME_TYPES[path.extname(realResolvedPath).toLowerCase()];
+      if (!contentType) return res.status(415).end('Unsupported asset type');
 
-    return res.status(200).send(fs.readFileSync(realResolvedPath));
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=600');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      if (req.method === 'HEAD') return res.status(200).end();
+
+      return res.status(200).send(fs.readFileSync(fileDescriptor));
+    } finally {
+      fs.closeSync(fileDescriptor);
+    }
   } catch {
     return res.status(404).end('Asset not found');
   }

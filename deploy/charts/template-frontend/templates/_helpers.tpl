@@ -57,7 +57,12 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{- define "template-frontend.disableHttps" -}}
-{{- toString (default .Values.templateConfig.disableHttps .Values.disableHttps) -}}
+{{- $rootDisableHttps := toString .Values.disableHttps -}}
+{{- if ne $rootDisableHttps "" -}}
+{{- $rootDisableHttps -}}
+{{- else -}}
+{{- toString .Values.templateConfig.disableHttps -}}
+{{- end -}}
 {{- end }}
 
 {{- define "template-frontend.certSecretName" -}}
