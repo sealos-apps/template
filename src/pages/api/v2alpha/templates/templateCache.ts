@@ -19,6 +19,13 @@ let templatesCache: TemplatesCache | null = null;
 let templateDetailCache = new Map<string, TemplateDetailCache>();
 let isRefreshingCache = false;
 const CACHE_TTL = 5 * 60 * 1000;
+const MAX_TEMPLATE_DETAIL_CACHE_SIZE = 256;
+
+function removeExpiredTemplateDetails(now: number) {
+  for (const [key, cached] of templateDetailCache) {
+    if (now - cached.timestamp >= CACHE_TTL) templateDetailCache.delete(key);
+  }
+}
 
 export function getCachedTemplates(
   jsonPath: string,
@@ -94,14 +101,23 @@ export function getCachedTemplateDetail(cacheKey: string): any | null {
     return cached.data;
   }
 
+  if (cached) templateDetailCache.delete(cacheKey);
   return null;
 }
 
 // Set template detail cache
 export function setCachedTemplateDetail(cacheKey: string, data: any): void {
+  const now = Date.now();
+  removeExpiredTemplateDetails(now);
+  if (templateDetailCache.has(cacheKey)) templateDetailCache.delete(cacheKey);
+  while (templateDetailCache.size >= MAX_TEMPLATE_DETAIL_CACHE_SIZE) {
+    const oldestKey = templateDetailCache.keys().next().value;
+    if (oldestKey === undefined) break;
+    templateDetailCache.delete(oldestKey);
+  }
   templateDetailCache.set(cacheKey, {
     data,
-    timestamp: Date.now()
+    timestamp: now
   });
 }
 

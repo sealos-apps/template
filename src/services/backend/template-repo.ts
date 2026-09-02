@@ -190,7 +190,7 @@ export async function GetTemplateStatic() {
   }
 }
 
-export async function updateRepo() {
+async function refreshTemplateRepo() {
   const originalPath = process.cwd();
   const targetPath = path.resolve(originalPath, 'templates');
   const jsonPath = path.resolve(originalPath, 'templates.json');
@@ -257,36 +257,41 @@ export async function updateRepo() {
   templateRepoLastSyncedAt = Date.now();
 }
 
+function getTemplateRepoSyncPromise() {
+  if (!templateRepoSyncPromise) {
+    templateRepoSyncPromise = refreshTemplateRepo().finally(() => {
+      templateRepoSyncPromise = null;
+    });
+  }
+
+  return templateRepoSyncPromise;
+}
+
+export async function updateRepo() {
+  await getTemplateRepoSyncPromise();
+}
+
 export async function ensureTemplateRepoFresh(basePath = process.cwd()) {
   const jsonPath = path.resolve(basePath, 'templates.json');
   const now = Date.now();
   const interval = getTemplateRepoSyncIntervalMs();
-
-  if (
-    fs.existsSync(jsonPath) &&
+  const syncPromise =
+    templateRepoSyncPromise ||
+    (fs.existsSync(jsonPath) &&
     templateRepoLastSyncedAt !== 0 &&
     now - templateRepoLastSyncedAt < interval
-  ) {
-    return;
-  }
+      ? null
+      : getTemplateRepoSyncPromise());
 
-  if (!templateRepoSyncPromise) {
-    templateRepoSyncPromise = updateRepo()
-      .then(() => readmeCache.clear())
-      .catch((error) => {
-        if (!fs.existsSync(jsonPath) || error instanceof TemplateRepoCheckoutMismatchError) {
-          throw error;
-        }
-        templateRepoLastSyncedAt = Date.now();
-        console.warn(
-          '[Template Repo] Failed to refresh repository, using existing catalog:',
-          error
-        );
-      })
-      .finally(() => {
-        templateRepoSyncPromise = null;
-      });
-  }
+  if (!syncPromise) return;
 
-  await templateRepoSyncPromise;
+  try {
+    await syncPromise;
+  } catch (error) {
+    if (!fs.existsSync(jsonPath) || error instanceof TemplateRepoCheckoutMismatchError) {
+      throw error;
+    }
+    templateRepoLastSyncedAt = Date.now();
+    console.warn('[Template Repo] Failed to refresh repository, using existing catalog:', error);
+  }
 }
