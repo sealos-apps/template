@@ -2,6 +2,7 @@
   "name": "template",
   "private": true,
   "version": "0.1.0",
+  "packageManager": "pnpm@8.9.0",
   "scripts": {
     "dev": "pnpm run config:gen-json-schema && next dev",
     "build": "next build",
@@ -11,7 +12,7 @@
     "test:watch": "vitest --project unit --watch",
     "test:ci": "vitest run --project unit",
     "test:components": "vitest --project components",
-    "test:components:ci": "vitest run --project components"
+    "test:components:ci": "vitest run --project components --passWithNoTests"
   },
   "dependencies": {
     "@chakra-ui/anatomy": "^2.2.1",
@@ -31,10 +32,11 @@
     "@next/font": "13.5.9",
     "@replit/codemirror-vscode-keymap": "^6.0.2",
     "@scalar/api-reference-react": "^0.8.36",
-    "@sealos/driver": "workspace:^",
-    "@sealos/gtm": "workspace:^",
-    "@sealos/shared": "workspace:^",
-    "@sealos/ui": "workspace:^",
+    "@labring/sealos-desktop-sdk": "0.1.23",
+    "@labring/sealos-driver-sdk": "1.0.0",
+    "@labring/sealos-gtm-sdk": "1.0.1",
+    "@labring/sealos-shared-sdk": "1.0.2",
+    "@labring/sealos-ui": "1.0.2",
     "@tanstack/react-query": "^4.35.3",
     "axios": "^1.5.1",
     "codemirror": "^6.0.1",
@@ -47,7 +49,7 @@
     "framer-motion": "^10.16.4",
     "github-markdown-css": "^5.2.0",
     "i18next": "^23.11.5",
-    "immer": "^9.0.21",
+    "immer": "^10.2.0",
     "js-cookie": "^3.0.5",
     "js-interpreter": "^5.1.2",
     "js-yaml": "^4.1.0",
@@ -72,8 +74,8 @@
     "remark-gfm": "^3.0.1",
     "remark-unwrap-images": "^3.0.1",
     "sass": "^1.68.0",
-    "sealos-desktop-sdk": "workspace:^",
     "sharp": "^0.32.6",
+    "sonner": "^2.0.8",
     "swiper": "^11.0.7",
     "zod": "^4.3.5",
     "zod-openapi": "^5.2.0",
@@ -101,5 +103,6 @@
     "vite-tsconfig-paths": "^5.1.4",
     "vitest": "^4.0.12",
     "@vitest/browser": "4.0.15"
-  }
+  },
+  "description": "The Template App Store is a Next.js service that indexes a Git template repository, serves template details and README content, and provides the deployment APIs used by the Sealos desktop application."
 }

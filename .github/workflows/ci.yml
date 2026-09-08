@@ -1,0 +1,297 @@
+name: template-ci
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      publish_images:
+        description: Publish runtime and cluster images
+        required: true
+        default: false
+        type: boolean
+      upload_oss:
+        description: Upload cluster image archives to OSS
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  RUNTIME_IMAGE_NAMESPACE: ghcr.io/${{ github.repository }}/runtime
+  CLUSTER_IMAGE_NAMESPACE: ghcr.io/${{ github.repository }}/cluster
+  SUPPORTED_PLATFORMS: linux/amd64,linux/arm64
+  SEALOS_VERSION: v5.1.2-rc5
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 8.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:ci
+      - run: pnpm test:components:ci
+      - run: pnpm exec tsc --noEmit --incremental false
+      - run: pnpm build
+
+  helm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.17.3
+      - run: helm lint deploy/charts/template-frontend
+      - run: helm template template-frontend deploy/charts/template-frontend --namespace template-frontend >/dev/null
+      - name: Validate HTTP mode
+        run: |
+          set -euo pipefail
+          helm template template-frontend deploy/charts/template-frontend \
+            --namespace template-frontend \
+            --set-string cloudDomain=template.example.com \
+            --set-string disableHttps=true \
+            --set-string httpPort=80 > /tmp/template-frontend-http.yaml
+          ! grep -Eq 'https://template\.example\.com|:443|^  tls:' /tmp/template-frontend-http.yaml
+      - name: Validate template repository path
+        run: |
+          set -euo pipefail
+          helm template template-frontend deploy/charts/template-frontend \
+            --namespace template-frontend \
+            --set-string templateConfig.templateRepoPath=custom/templates > /tmp/template-frontend-repo-path.yaml
+          grep -Fq 'localDir: "custom/templates"' /tmp/template-frontend-repo-path.yaml
+
+  release-metadata:
+    runs-on: ubuntu-latest
+    outputs:
+      oss_prefix: ${{ steps.metadata.outputs.oss_prefix }}
+      oss_tag: ${{ steps.metadata.outputs.oss_tag }}
+    steps:
+      - name: Compute archive metadata
+        id: metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          short_sha="${GITHUB_SHA:0:7}"
+          if [[ "${GITHUB_REF_TYPE}" == "tag" && "${GITHUB_REF_NAME}" == v* ]]; then
+            oss_tag="${GITHUB_REF_NAME//\//-}"
+            oss_prefix="release/${GITHUB_REF_NAME}"
+          else
+            oss_tag="main-${short_sha}"
+            oss_prefix="ci/main/${short_sha}"
+          fi
+
+          echo "oss_tag=${oss_tag}" >> "${GITHUB_OUTPUT}"
+          echo "oss_prefix=${oss_prefix}" >> "${GITHUB_OUTPUT}"
+          echo "Archive tag: ${oss_tag}"
+          echo "OSS prefix: ${oss_prefix}"
+
+  runtime-images:
+    runs-on: ubuntu-latest
+    needs:
+      - frontend
+      - helm
+      - release-metadata
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - amd64
+          - arm64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+        if: matrix.arch == 'arm64'
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        if: github.event_name == 'push' || inputs.publish_images == true || inputs.upload_oss == true
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build runtime image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/${{ matrix.arch }}
+          push: ${{ github.event_name == 'push' || inputs.publish_images == true || inputs.upload_oss == true }}
+          tags: ${{ env.RUNTIME_IMAGE_NAMESPACE }}/template-frontend:${{ github.sha }}-${{ matrix.arch }}
+
+  runtime-release:
+    runs-on: ubuntu-latest
+    needs: runtime-images
+    if: github.event_name == 'push' || inputs.publish_images == true || inputs.upload_oss == true
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish runtime manifests and inspect sizes
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create -t "${RUNTIME_IMAGE_NAMESPACE}/template-frontend:${GITHUB_SHA}" \
+            "${RUNTIME_IMAGE_NAMESPACE}/template-frontend:${GITHUB_SHA}-amd64" \
+            "${RUNTIME_IMAGE_NAMESPACE}/template-frontend:${GITHUB_SHA}-arm64"
+          docker buildx imagetools create -t "${RUNTIME_IMAGE_NAMESPACE}/template-frontend:latest" \
+            "${RUNTIME_IMAGE_NAMESPACE}/template-frontend:${GITHUB_SHA}-amd64" \
+            "${RUNTIME_IMAGE_NAMESPACE}/template-frontend:${GITHUB_SHA}-arm64"
+          docker buildx imagetools inspect "${RUNTIME_IMAGE_NAMESPACE}/template-frontend:${GITHUB_SHA}"
+
+  cluster-images:
+    runs-on: ubuntu-latest
+    needs:
+      - runtime-release
+      - release-metadata
+    if: github.event_name == 'push' || inputs.publish_images == true || inputs.upload_oss == true
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - amd64
+          - arm64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+        if: matrix.arch == 'arm64'
+      - name: Install Sealos
+        shell: bash
+        run: |
+          set -euo pipefail
+          work_dir="$(mktemp -d)"
+          curl -fsSL -o "${work_dir}/sealos.tar.gz" \
+            "https://github.com/labring/sealos/releases/download/${SEALOS_VERSION}/sealos_${SEALOS_VERSION#v}_linux_amd64.tar.gz"
+          tar -xzf "${work_dir}/sealos.tar.gz" -C "${work_dir}"
+          sudo install "${work_dir}/sealos" /usr/local/bin/sealos
+          sealos version
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Login Sealos to GHCR
+        run: sudo sealos login -u "${{ github.actor }}" -p "${{ secrets.GITHUB_TOKEN }}" ghcr.io
+      - name: Build and archive cluster image
+        working-directory: deploy
+        env:
+          RUNTIME_IMAGE: ${{ env.RUNTIME_IMAGE_NAMESPACE }}/template-frontend:${{ github.sha }}
+          CLUSTER_IMAGE: ${{ env.CLUSTER_IMAGE_NAMESPACE }}/template-frontend:${{ github.sha }}-${{ matrix.arch }}
+          ARCH: ${{ matrix.arch }}
+          OSS_TAG: ${{ needs.release-metadata.outputs.oss_tag }}
+        run: |
+          set -euo pipefail
+          tar_basename="template-frontend-cluster-${OSS_TAG}-${ARCH}"
+          sed -i -E "s;^image: .*;image: ${RUNTIME_IMAGE};" charts/template-frontend/values.yaml
+          sudo sealos registry save --registry-dir=registry --arch "${ARCH}" .
+          sudo sealos build -t "${CLUSTER_IMAGE}" --platform "linux/${ARCH}" -f Kubefile .
+          sudo sealos push "${CLUSTER_IMAGE}"
+          sudo sealos save -o "${RUNNER_TEMP}/${tar_basename}.tar" "${CLUSTER_IMAGE}"
+          gzip -f "${RUNNER_TEMP}/${tar_basename}.tar"
+          md5sum "${RUNNER_TEMP}/${tar_basename}.tar.gz" > "${RUNNER_TEMP}/${tar_basename}.tar.gz.md5"
+          ls -lh "${RUNNER_TEMP}/${tar_basename}.tar.gz" "${RUNNER_TEMP}/${tar_basename}.tar.gz.md5"
+          du -h "${RUNNER_TEMP}/${tar_basename}.tar.gz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cluster-bundle-${{ matrix.arch }}
+          path: |
+            ${{ runner.temp }}/template-frontend-cluster-${{ needs.release-metadata.outputs.oss_tag }}-${{ matrix.arch }}.tar.gz
+            ${{ runner.temp }}/template-frontend-cluster-${{ needs.release-metadata.outputs.oss_tag }}-${{ matrix.arch }}.tar.gz.md5
+          if-no-files-found: error
+          retention-days: 7
+
+  cluster-release:
+    runs-on: ubuntu-latest
+    needs: cluster-images
+    if: github.event_name == 'push' || inputs.publish_images == true || inputs.upload_oss == true
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish cluster manifests and inspect sizes
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create -t "${CLUSTER_IMAGE_NAMESPACE}/template-frontend:${GITHUB_SHA}" \
+            "${CLUSTER_IMAGE_NAMESPACE}/template-frontend:${GITHUB_SHA}-amd64" \
+            "${CLUSTER_IMAGE_NAMESPACE}/template-frontend:${GITHUB_SHA}-arm64"
+          docker buildx imagetools create -t "${CLUSTER_IMAGE_NAMESPACE}/template-frontend:latest" \
+            "${CLUSTER_IMAGE_NAMESPACE}/template-frontend:${GITHUB_SHA}-amd64" \
+            "${CLUSTER_IMAGE_NAMESPACE}/template-frontend:${GITHUB_SHA}-arm64"
+          docker buildx imagetools inspect "${CLUSTER_IMAGE_NAMESPACE}/template-frontend:${GITHUB_SHA}"
+
+  oss-upload:
+    runs-on: ubuntu-latest
+    needs:
+      - cluster-images
+      - release-metadata
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.upload_oss == true
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: cluster-bundle-*
+          path: cluster-bundles
+          merge-multiple: true
+      - name: Upload cluster archives to OSS
+        env:
+          OSS_ENDPOINT: ${{ secrets.OSS_ENDPOINT }}
+          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          OSS_BUCKET: ${{ vars.OSS_BUCKET }}
+          OSS_PREFIX: ${{ needs.release-metadata.outputs.oss_prefix }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${OSS_ENDPOINT:?OSS_ENDPOINT is required}"
+          : "${OSS_ACCESS_KEY_ID:?OSS_ACCESS_KEY_ID is required}"
+          : "${OSS_ACCESS_KEY_SECRET:?OSS_ACCESS_KEY_SECRET is required}"
+          : "${OSS_BUCKET:?OSS_BUCKET is required}"
+          : "${OSS_PREFIX:?OSS_PREFIX is required}"
+
+          shopt -s nullglob
+          archives=(cluster-bundles/*.tar.gz)
+          checksums=(cluster-bundles/*.md5)
+          [[ "${#archives[@]}" -eq 2 ]] || { echo "Expected 2 cluster archives, found ${#archives[@]}" >&2; exit 1; }
+          [[ "${#checksums[@]}" -eq 2 ]] || { echo "Expected 2 cluster checksums, found ${#checksums[@]}" >&2; exit 1; }
+          ls -lh "${archives[@]}" "${checksums[@]}"
+
+          curl -fsSL https://gosspublic.alicdn.com/ossutil/install.sh | sudo bash
+          command -v ossutil64
+
+          for archive in "${archives[@]}"; do
+            ossutil64 cp -f -e "${OSS_ENDPOINT}" -i "${OSS_ACCESS_KEY_ID}" -k "${OSS_ACCESS_KEY_SECRET}" "${archive%.tar.gz}.tar.gz" "oss://${OSS_BUCKET}/${OSS_PREFIX}/$(basename "${archive}")"
+          done
+          for checksum in "${checksums[@]}"; do
+            ossutil64 cp -f -e "${OSS_ENDPOINT}" -i "${OSS_ACCESS_KEY_ID}" -k "${OSS_ACCESS_KEY_SECRET}" "${checksum%.md5}.md5" "oss://${OSS_BUCKET}/${OSS_PREFIX}/$(basename "${checksum}")"
+          done

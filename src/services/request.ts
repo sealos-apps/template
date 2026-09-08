@@ -70,10 +70,10 @@ export function GET<T = any>(
   data?: { [key: string]: any },
   config?: AxiosRequestConfig
 ): Promise<T> {
-  return request.get(url, {
+  return request.get<ApiResponse<T>, T>(url, {
     params: data,
     ...config
-  });
+  }) as unknown as Promise<T>;
 }
 
 export function POST<T = any>(
@@ -81,7 +81,7 @@ export function POST<T = any>(
   data?: { [key: string]: any },
   config?: AxiosRequestConfig
 ): Promise<T> {
-  return request.post(url, data, config);
+  return request.post<ApiResponse<T>, T>(url, data, config) as unknown as Promise<T>;
 }
 
 export function DELETE<T = any>(
@@ -89,8 +89,8 @@ export function DELETE<T = any>(
   data?: { [key: string]: any },
   config?: AxiosRequestConfig
 ): Promise<T> {
-  return request.get(url, {
+  return request.get<ApiResponse<T>, T>(url, {
     params: data,
     ...config
-  });
+  }) as unknown as Promise<T>;
 }

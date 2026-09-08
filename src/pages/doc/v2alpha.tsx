@@ -1,11 +1,16 @@
 'use client';
 
-import { ApiReferenceReact } from '@scalar/api-reference-react';
+import dynamic from 'next/dynamic';
 import { getUserKubeConfig } from '@/utils/user';
 
 import { document } from '@/types/apis/v2alpha';
 
 import '@scalar/api-reference-react/style.css';
+
+const ApiReferenceReact = dynamic(
+  () => import('@scalar/api-reference-react').then(({ ApiReferenceReact }) => ApiReferenceReact),
+  { ssr: false }
+);
 
 export default function ApiV2AlphaDocsPage() {
   const config = {

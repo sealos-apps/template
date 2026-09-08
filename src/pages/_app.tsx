@@ -10,26 +10,26 @@ import Head from 'next/head';
 import Router, { useRouter } from 'next/router';
 import NProgress from 'nprogress'; //nprogress module
 import { useEffect, useState, useCallback, ComponentProps } from 'react';
-import { EVENT_NAME } from 'sealos-desktop-sdk';
-import { createSealosApp, sealosApp } from 'sealos-desktop-sdk/app';
+import { EVENT_NAME } from '@labring/sealos-desktop-sdk';
+import { createSealosApp, sealosApp } from '@labring/sealos-desktop-sdk/app';
 import useSessionStore from '@/store/session';
 import { useUserStore } from '@/store/user';
-import { RybbitScript } from '@sealos/gtm';
+import RybbitScript from '@/components/RybbitScript';
 import {
   ClientConfigProvider,
   prefetchClientAppConfig,
   setupClientAppConfigDefaults
-} from '@sealos/shared';
-import { getClientAppConfigServer } from '@/pages/api/platform/getClientAppConfig';
+} from '@labring/sealos-shared-sdk';
 
-import '@sealos/driver/src/driver.css';
+import '@labring/sealos-driver-sdk/src/driver.css';
 import '@/styles/reset.scss';
 import 'nprogress/nprogress.css';
 import { useGuideStore } from '@/store/guide';
 import App from 'next/app';
 import Script from 'next/script';
-import { InsufficientQuotaDialog, type SupportedLang } from '@sealos/shared/chakra';
-import { QuotaGuardProvider } from '@sealos/shared';
+import { InsufficientQuotaDialog, type SupportedLang } from '@labring/sealos-shared-sdk/chakra';
+import { QuotaGuardProvider } from '@labring/sealos-shared-sdk';
+import { Toaster } from '@labring/sealos-ui';
 import { Config } from '@/config';
 import type { CustomScript } from '@/types/config';
 import { useClientAppConfig } from '@/hooks/useClientAppConfig';
@@ -199,6 +199,7 @@ function AppContent({
           </Layout>
           <InsufficientQuotaDialog lang={(i18n?.language || 'en') as SupportedLang} />
         </QuotaGuardProvider>
+        <Toaster />
       </ChakraProvider>
     </>
   );
@@ -269,6 +270,7 @@ MyApp.getInitialProps = async (context: AppContext): Promise<AppOwnProps & AppIn
   let dehydratedState: unknown;
   if (typeof window === 'undefined') {
     const qc = new QueryClient();
+    const { getClientAppConfigServer } = await import('./api/platform/getClientAppConfig');
     await prefetchClientAppConfig(qc, ['client-app-config'], getClientAppConfigServer);
     dehydratedState = dehydrate(qc);
   }

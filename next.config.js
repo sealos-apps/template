@@ -1,6 +1,5 @@
 /** @type {import('next').NextConfig} */
 const { i18n } = require('./next-i18next.config');
-const path = require('path');
 
 const withBundleAnalyzer = require('@next/bundle-analyzer')({
   enabled: process.env.ANALYZE === 'true'
@@ -23,8 +22,6 @@ const nextConfig = {
     return config;
   },
   experimental: {
-    // this includes files from the monorepo base two directories up
-    outputFileTracingRoot: path.join(__dirname, '../../'),
     instrumentationHook: true
   },
   images: {
@@ -35,7 +32,13 @@ const nextConfig = {
       }
     ]
   },
-  transpilePackages: ['@sealos/ui', 'sealos-desktop-sdk', '@sealos/driver'],
+  transpilePackages: [
+    '@labring/sealos-driver-sdk',
+    '@labring/sealos-gtm-sdk',
+    '@labring/sealos-shared-sdk',
+    '@labring/sealos-ui',
+    '@labring/sealos-desktop-sdk'
+  ],
   async rewrites() {
     return [
       {

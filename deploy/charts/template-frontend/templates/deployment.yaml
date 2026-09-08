@@ -34,6 +34,9 @@ spec:
         - name: {{ .Chart.Name }}
           image: {{ .Values.image | quote }}
           imagePullPolicy: {{ .Values.imagePullPolicy }}
+          env:
+            - name: NODE_TLS_REJECT_UNAUTHORIZED
+              value: {{ .Values.platform.tlsRejectUnauthorized | quote }}
           {{- if .Values.securityContext }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
@@ -49,7 +52,7 @@ spec:
               httpHeaders:
                 - name: Accept
                   value: application/json
-              path: /api/platform/getClientAppConfig
+              path: /healthz
               port: {{ .Values.service.port }}
               scheme: HTTP
             initialDelaySeconds: 5

@@ -8,6 +8,13 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import path from 'path';
 import { Cron } from 'croner';
 import { Config } from '@/config';
+import { proxyTemplateIconUrls, type TemplateRepo } from '@/utils/templateAsset';
+import {
+  createTemplateCatalogEtag,
+  getTemplateCatalogVersion,
+  getTemplateCategories
+} from '@/services/backend/template-categories';
+import { ensureTemplateRepoFresh } from '@/services/backend/template-repo';
 
 export function replaceRawWithCDN(url: string, cdnUrl: string) {
   let parsedUrl = parseGithubUrl(url);
@@ -23,7 +30,8 @@ export const readTemplates = (
   jsonData: string,
   cdnUrl?: string,
   configuredCategories: TemplateCategory[] = [],
-  language?: string
+  language?: string,
+  templateRepo?: TemplateRepo
 ): TemplateType[] => {
   const _templates: TemplateType[] = JSON.parse(jsonData);
 
@@ -40,10 +48,11 @@ export const readTemplates = (
         spec.icon = replaceRawWithCDN(spec.icon, cdnUrl);
       }
 
-      return {
+      const template = {
         ...item,
         spec
       };
+      return templateRepo ? proxyTemplateIconUrls(template, templateRepo) : template;
     })
     .filter((item) => {
       if (!language) return true;
@@ -63,9 +72,16 @@ export const readTemplatesFromFile = (
   jsonPath: string,
   cdnUrl?: string,
   configuredCategories: TemplateCategory[] = [],
-  language?: string
+  language?: string,
+  templateRepo?: TemplateRepo
 ): TemplateType[] =>
-  readTemplates(fs.readFileSync(jsonPath, 'utf8'), cdnUrl, configuredCategories, language);
+  readTemplates(
+    fs.readFileSync(jsonPath, 'utf8'),
+    cdnUrl,
+    configuredCategories,
+    language,
+    templateRepo
+  );
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const language = req.query.language as string;
@@ -75,6 +91,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const baseurl = `http://${process.env.HOSTNAME || 'localhost'}:${process.env.PORT || 3000}`;
 
   try {
+    await ensureTemplateRepoFresh();
+
     if (!global.updateRepoCronJob) {
       global.updateRepoCronJob = new Cron(
         '*/5 * * * *',
@@ -95,17 +113,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const config = Config();
+    const templateRepo = config.template.repo;
+    const categories = getTemplateCategories(config.template.categories);
     const templates = readTemplatesFromFile(
       jsonPath,
       config.template.cdnHost,
-      config.template.categories,
-      language
+      categories,
+      language,
+      templateRepo
     );
 
     const timestamp = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
     console.log(`[${timestamp}] language: ${language}, templates count: ${templates.length}`);
 
-    const menuKeys = getCategorySlugs(config.template.categories).join(',');
+    const menuKeys = getCategorySlugs(categories).join(',');
+
+    res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    res.setHeader(
+      'ETag',
+      createTemplateCatalogEtag([
+        'listTemplate',
+        language || 'default',
+        getTemplateCatalogVersion()
+      ])
+    );
 
     jsonRes(res, { data: { templates: templates, menuKeys }, code: 200 });
   } catch (error) {

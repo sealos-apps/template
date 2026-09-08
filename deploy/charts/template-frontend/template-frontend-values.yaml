@@ -3,6 +3,15 @@
 
 replicaCount: 1
 
+cloudDomain: ""
+cloudPort: ""
+httpPort: ""
+disableHttps: ""
+certSecretName: ""
+
+platform:
+  tlsRejectUnauthorized: "1"
+
 resources:
   limits:
     cpu: 2000m
@@ -15,7 +24,7 @@ templateConfig:
   userDomain: ""
   templateRepoUrl: "https://github.com/labring-actions/templates"
   templateRepoBranch: "main"
-  templateRepoPath: "templates"
+  templateRepoPath: "template"
   guideEnabled: true
   billingUrl: "http://account-service.account-system.svc:2333"
   enableReadmeFetch: true

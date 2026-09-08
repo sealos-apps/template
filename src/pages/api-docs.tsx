@@ -1,5 +1,10 @@
 import { document } from '@/types/apis';
-import { ApiReferenceReact } from '@scalar/api-reference-react';
+import dynamic from 'next/dynamic';
+
+const ApiReferenceReact = dynamic(
+  () => import('@scalar/api-reference-react').then(({ ApiReferenceReact }) => ApiReferenceReact),
+  { ssr: false }
+);
 
 export default function ApiDocs() {
   const config = {

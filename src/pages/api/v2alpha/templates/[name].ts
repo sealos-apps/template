@@ -12,6 +12,12 @@ import {
 } from './templateCache';
 import { Config } from '@/config';
 import { sendError, ErrorType, ErrorCode } from '@/types/v2alpha/error';
+import { ensureTemplateRepoFresh } from '@/services/backend/template-repo';
+import {
+  createTemplateCatalogEtag,
+  getTemplateCatalogVersion,
+  getTemplateCategories
+} from '@/services/backend/template-categories';
 
 // estimate min—max equality
 function simplifyResourceValue(
@@ -120,6 +126,8 @@ async function handleTemplateDetails(
     const originalPath = process.cwd();
     const jsonPath = path.resolve(originalPath, 'templates.json');
 
+    await ensureTemplateRepoFresh(originalPath);
+
     if (!fs.existsSync(jsonPath)) {
       return sendError(res, {
         status: 404,
@@ -129,7 +137,16 @@ async function handleTemplateDetails(
       });
     }
     const config = Config();
-    getCachedTemplates(jsonPath, config.template.cdnHost, config.template.categories, language);
+    const categories = getTemplateCategories(config.template.categories);
+    const catalogVersion = getTemplateCatalogVersion(originalPath);
+    getCachedTemplates(
+      jsonPath,
+      config.template.cdnHost,
+      categories,
+      language,
+      config.template.repo,
+      catalogVersion
+    );
     const template = getTemplateFromCache(templateName);
 
     if (!template) {
@@ -144,7 +161,12 @@ async function handleTemplateDetails(
     const i18nData = template.spec?.i18n?.[language];
 
     let simplifiedResource = null;
-    const cacheKey = `${templateName}-${language}`;
+    const cacheKey = createTemplateCatalogEtag([
+      'v2alpha-detail-resource',
+      templateName,
+      language,
+      catalogVersion
+    ]);
 
     // Check cache first
     simplifiedResource = getCachedTemplateDetail(cacheKey);
@@ -211,6 +233,10 @@ async function handleTemplateDetails(
       deployCount: template.spec.deployCount || 0
     };
 
+    res.setHeader(
+      'ETag',
+      createTemplateCatalogEtag(['v2alpha-detail', templateName, language, catalogVersion])
+    );
     res.status(200).json(result);
   } catch (error) {
     console.error('Error in template detail API:', error);
