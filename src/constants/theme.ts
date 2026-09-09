@@ -328,6 +328,7 @@ export const theme = extendTheme(sealosTheme, {
     bold: 500
   },
   components: {
+    Button,
     Tooltip,
     Select,
     Switch,
