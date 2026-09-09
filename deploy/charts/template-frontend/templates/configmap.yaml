@@ -28,6 +28,9 @@ data:
 
         repo:
             url: {{ .Values.templateConfig.templateRepoUrl | quote }}
+            {{- with .Values.templateConfig.templateRepoPublicUrl }}
+            publicUrl: {{ . | quote }}
+            {{- end }}
             branch: {{ .Values.templateConfig.templateRepoBranch | quote }}
             localDir: {{ .Values.templateConfig.templateRepoPath | quote }}
 

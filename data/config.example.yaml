@@ -19,6 +19,8 @@ template:
 
     repo:
         url: https://github.com/labring-actions/templates
+        # Set publicUrl only when the server clones through an internal URL but icons use a browser-facing URL.
+        # publicUrl: https://gogs.example.com/sealos-admin/templates.git
         branch: main
         localDir: template
 

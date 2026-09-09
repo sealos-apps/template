@@ -23,6 +23,7 @@ resources:
 templateConfig:
   userDomain: ""
   templateRepoUrl: "https://github.com/labring-actions/templates"
+  templateRepoPublicUrl: ""
   templateRepoBranch: "main"
   templateRepoPath: "template"
   guideEnabled: true
