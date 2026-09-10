@@ -79,7 +79,6 @@ AUTO_CONFIG_HELM_OPTS="${AUTO_CONFIG_HELM_OPTS} --set-string platform.tlsRejectU
 
 add_set_string templateConfig.userDomain "${userDomain:-}"
 add_set_string templateConfig.templateRepoUrl "${templateRepoUrl:-}"
-add_set_string templateConfig.templateRepoPublicUrl "${templateRepoPublicUrl:-}"
 add_set_string templateConfig.templateRepoBranch "${templateRepoBranch:-}"
 add_set_string templateConfig.templateRepoPath "${templateRepoPath:-}"
 add_set_string templateConfig.guideEnabled "${guideEnabled:-}"

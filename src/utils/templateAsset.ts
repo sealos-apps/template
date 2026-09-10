@@ -3,7 +3,6 @@ import { TemplateType } from '@/types/app';
 
 export type TemplateRepo = {
   url: string;
-  publicUrl?: string;
   branch: string;
 };
 
@@ -130,19 +129,6 @@ function findSubsequence(haystack: string[], needle: string[]) {
   return -1;
 }
 
-function isSameRepository(
-  left: ReturnType<typeof parseGitRepoUrl>,
-  right: ReturnType<typeof parseGitRepoUrl>
-) {
-  return (
-    Boolean(left) &&
-    Boolean(right) &&
-    left!.repo === right!.repo &&
-    left!.ownerPath.length === right!.ownerPath.length &&
-    left!.ownerPath.every((part, index) => part === right!.ownerPath[index])
-  );
-}
-
 function decodeUrlPathParts(pathname: string) {
   try {
     return pathname
@@ -176,12 +162,7 @@ function getProxyableTemplateAssetPath(assetUrl: string, repo: TemplateRepo) {
 
   const isGithubRawUrl =
     parsedRepo.host === 'github.com' && parsedUrl.hostname === 'raw.githubusercontent.com';
-  const publicRepo = repo.publicUrl ? parseGitRepoUrl(repo.publicUrl) : null;
-  const isConfiguredPublicRepoUrl =
-    Boolean(publicRepo) &&
-    isSameRepository(parsedRepo, publicRepo) &&
-    parsedUrl.origin === publicRepo!.origin;
-  if (!isGithubRawUrl && parsedUrl.origin !== parsedRepo.origin && !isConfiguredPublicRepoUrl) {
+  if (!isGithubRawUrl && parsedUrl.origin !== parsedRepo.origin) {
     return '';
   }
 

@@ -111,11 +111,6 @@ export type UiConfig = z.infer<typeof UiSchema>;
 const RepoSchema = z
   .object({
     url: z.string().url().describe('Git repository URL containing template YAML files'),
-    publicUrl: z
-      .string()
-      .url()
-      .optional()
-      .describe('Optional browser-facing URL for the same repository, used only to proxy local icon assets'),
     branch: z.string().describe('Git branch name to checkout'),
     localDir: z.string().describe('Relative path where the template repo is cloned to')
   })

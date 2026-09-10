@@ -172,10 +172,9 @@ describe('template asset URL resolution', () => {
     expect(getTemplateAssetProxyUrl(assetUrl, repoUrl)).toBe(assetUrl);
   });
 
-  it('proxies a browser-facing URL configured for the same internal repository', () => {
+  it('does not proxy a browser-facing URL when the repository is cloned internally', () => {
     const repoUrl = {
       url: 'http://template-gogs.template-system.svc.cluster.local:3000/sealos-admin/templates.git',
-      publicUrl: 'https://gogs.example.com/sealos-admin/templates.git',
       branch: 'main'
     };
 
@@ -184,6 +183,6 @@ describe('template asset URL resolution', () => {
         'https://gogs.example.com/sealos-admin/templates/raw/main/template/ace-step/logo.svg',
         repoUrl
       )
-    ).toBe('/api/templateAsset?path=template%2Face-step%2Flogo.svg');
+    ).toBe('https://gogs.example.com/sealos-admin/templates/raw/main/template/ace-step/logo.svg');
   });
 });
