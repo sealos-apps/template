@@ -15,6 +15,7 @@ type ResolveTemplateAssetUrlOptions = {
 
 const ASSET_FIELDS = ['readme', 'icon'] as const;
 const TEMPLATE_ASSET_PROXY_PREFIX = '/api/templateAsset?path=';
+export const DEFAULT_TEMPLATE_ICON_URL = '/logo.svg';
 const SAFE_ICON_EXTENSIONS = new Set([
   '.svg',
   '.png',
@@ -32,6 +33,10 @@ function isHttpUrl(value: string) {
 
 function isProxyUrl(value: string) {
   return value.startsWith(TEMPLATE_ASSET_PROXY_PREFIX);
+}
+
+function isLocalAssetUrl(value: string) {
+  return value.startsWith('/') && !value.startsWith('//') && !value.startsWith('/\\');
 }
 
 function isRelativeAssetUrl(value: string) {
@@ -162,7 +167,6 @@ function getProxyableTemplateAssetPath(assetUrl: string, repo: TemplateRepo) {
 
   const isGithubRawUrl =
     parsedRepo.host === 'github.com' && parsedUrl.hostname === 'raw.githubusercontent.com';
-  if (!isGithubRawUrl && parsedUrl.origin !== parsedRepo.origin) return '';
 
   let afterRepo = pathParts.slice(repoIndex + repoPath.length);
   if (isGithubRawUrl) {
@@ -188,10 +192,11 @@ function getProxyableTemplateAssetPath(assetUrl: string, repo: TemplateRepo) {
 }
 
 export function getTemplateAssetProxyUrl(assetUrl: string, repo: TemplateRepo) {
-  if (!assetUrl || isProxyUrl(assetUrl)) return assetUrl || '';
+  if (isProxyUrl(assetUrl) || isLocalAssetUrl(assetUrl)) return assetUrl;
   const proxyablePath = getProxyableTemplateAssetPath(assetUrl, repo);
-  if (!proxyablePath) return assetUrl;
-  return `${TEMPLATE_ASSET_PROXY_PREFIX}${encodeURIComponent(proxyablePath)}`;
+  return proxyablePath
+    ? `${TEMPLATE_ASSET_PROXY_PREFIX}${encodeURIComponent(proxyablePath)}`
+    : DEFAULT_TEMPLATE_ICON_URL;
 }
 
 type TemplateAssetResource = {

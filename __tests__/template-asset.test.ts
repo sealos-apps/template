@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { replaceRawWithCDN } from '@/pages/api/listTemplate';
 import {
+  DEFAULT_TEMPLATE_ICON_URL,
   getTemplateAssetProxyUrl,
   proxyTemplateIconUrls,
   resolveTemplateAssetUrl,
@@ -149,26 +150,51 @@ describe('template asset URL resolution', () => {
     expect(template.spec.i18n?.zh.icon).toBe('/api/templateAsset?path=app%2Fstatic%2Flogo-zh.png');
   });
 
-  it('does not proxy another branch or traversal-like icon path', () => {
+  it('uses the local fallback for another branch or traversal-like icon path', () => {
     const repoUrl = { url: 'https://gogs.example.com/team/templates', branch: 'main' };
     expect(
       getTemplateAssetProxyUrl(
         'https://gogs.example.com/team/templates/raw/release/app/logo.svg',
         repoUrl
       )
-    ).toContain('/raw/release/');
+    ).toBe(DEFAULT_TEMPLATE_ICON_URL);
     expect(
       getTemplateAssetProxyUrl(
         'https://gogs.example.com/team/templates/raw/main/%2e%2e/secret/logo.svg',
         repoUrl
       )
-    ).toBe('https://gogs.example.com/team/templates/raw/main/%2e%2e/secret/logo.svg');
+    ).toBe(DEFAULT_TEMPLATE_ICON_URL);
   });
 
-  it('does not proxy a matching repository path from another origin', () => {
+  it('uses the local fallback for an icon from a different repository', () => {
     const repoUrl = { url: 'https://gogs.example.com/team/templates', branch: 'main' };
-    const assetUrl = 'https://untrusted.example.com/team/templates/raw/main/app/logo.svg';
+    const assetUrl = 'https://untrusted.example.com/team/other-repository/raw/main/app/logo.svg';
 
-    expect(getTemplateAssetProxyUrl(assetUrl, repoUrl)).toBe(assetUrl);
+    expect(getTemplateAssetProxyUrl(assetUrl, repoUrl)).toBe(DEFAULT_TEMPLATE_ICON_URL);
+  });
+
+  it('preserves already-local icon URLs', () => {
+    const repoUrl = { url: 'https://gogs.example.com/team/templates', branch: 'main' };
+
+    expect(getTemplateAssetProxyUrl('/images/custom-logo.svg', repoUrl)).toBe(
+      '/images/custom-logo.svg'
+    );
+    expect(getTemplateAssetProxyUrl('//untrusted.example.com/logo.svg', repoUrl)).toBe(
+      DEFAULT_TEMPLATE_ICON_URL
+    );
+  });
+
+  it('proxies a browser-facing URL for the configured repository without a second URL', () => {
+    const repoUrl = {
+      url: 'http://template-gogs.template-system.svc.cluster.local:3000/sealos-admin/templates.git',
+      branch: 'main'
+    };
+
+    expect(
+      getTemplateAssetProxyUrl(
+        'https://gogs.example.com/sealos-admin/templates/raw/main/template/ace-step/logo.svg',
+        repoUrl
+      )
+    ).toBe('/api/templateAsset?path=template%2Face-step%2Flogo.svg');
   });
 });
