@@ -26,8 +26,8 @@ permissions:
   contents: read
 
 env:
-  RUNTIME_IMAGE_NAMESPACE: ghcr.io/${{ github.repository }}/runtime
-  CLUSTER_IMAGE_NAMESPACE: ghcr.io/${{ github.repository }}/cluster
+  RUNTIME_IMAGE_NAME: ghcr.io/${{ github.repository }}/template-frontend
+  CLUSTER_IMAGE_NAME: ghcr.io/${{ github.repository }}/template-cluster
   SUPPORTED_PLATFORMS: linux/amd64,linux/arm64
   SEALOS_VERSION: v5.1.2-rc5
 
@@ -79,6 +79,7 @@ jobs:
   release-metadata:
     runs-on: ubuntu-latest
     outputs:
+      image_tag: ${{ steps.metadata.outputs.image_tag }}
       oss_prefix: ${{ steps.metadata.outputs.oss_prefix }}
       oss_tag: ${{ steps.metadata.outputs.oss_tag }}
     steps:
@@ -97,6 +98,7 @@ jobs:
             oss_prefix="ci/main/${short_sha}"
           fi
 
+          echo "image_tag=${oss_tag}" >> "${GITHUB_OUTPUT}"
           echo "oss_tag=${oss_tag}" >> "${GITHUB_OUTPUT}"
           echo "oss_prefix=${oss_prefix}" >> "${GITHUB_OUTPUT}"
           echo "Archive tag: ${oss_tag}"
@@ -135,11 +137,13 @@ jobs:
           file: ./Dockerfile
           platforms: linux/${{ matrix.arch }}
           push: ${{ github.event_name == 'push' || inputs.publish_images == true || inputs.upload_oss == true }}
-          tags: ${{ env.RUNTIME_IMAGE_NAMESPACE }}/template-frontend:${{ github.sha }}-${{ matrix.arch }}
+          tags: ${{ env.RUNTIME_IMAGE_NAME }}:${{ needs.release-metadata.outputs.image_tag }}-${{ matrix.arch }}
 
   runtime-release:
     runs-on: ubuntu-latest
-    needs: runtime-images
+    needs:
+      - runtime-images
+      - release-metadata
     if: github.event_name == 'push' || inputs.publish_images == true || inputs.upload_oss == true
     permissions:
       contents: read
@@ -152,15 +156,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Publish runtime manifests and inspect sizes
+        env:
+          IMAGE_TAG: ${{ needs.release-metadata.outputs.image_tag }}
         run: |
           set -euo pipefail
-          docker buildx imagetools create -t "${RUNTIME_IMAGE_NAMESPACE}/template-frontend:${GITHUB_SHA}" \
-            "${RUNTIME_IMAGE_NAMESPACE}/template-frontend:${GITHUB_SHA}-amd64" \
-            "${RUNTIME_IMAGE_NAMESPACE}/template-frontend:${GITHUB_SHA}-arm64"
-          docker buildx imagetools create -t "${RUNTIME_IMAGE_NAMESPACE}/template-frontend:latest" \
-            "${RUNTIME_IMAGE_NAMESPACE}/template-frontend:${GITHUB_SHA}-amd64" \
-            "${RUNTIME_IMAGE_NAMESPACE}/template-frontend:${GITHUB_SHA}-arm64"
-          docker buildx imagetools inspect "${RUNTIME_IMAGE_NAMESPACE}/template-frontend:${GITHUB_SHA}"
+          docker buildx imagetools create -t "${RUNTIME_IMAGE_NAME}:${IMAGE_TAG}" \
+            "${RUNTIME_IMAGE_NAME}:${IMAGE_TAG}-amd64" \
+            "${RUNTIME_IMAGE_NAME}:${IMAGE_TAG}-arm64"
+          docker buildx imagetools create -t "${RUNTIME_IMAGE_NAME}:latest" \
+            "${RUNTIME_IMAGE_NAME}:${IMAGE_TAG}-amd64" \
+            "${RUNTIME_IMAGE_NAME}:${IMAGE_TAG}-arm64"
+          docker buildx imagetools inspect "${RUNTIME_IMAGE_NAME}:${IMAGE_TAG}"
 
   cluster-images:
     runs-on: ubuntu-latest
@@ -201,8 +207,8 @@ jobs:
       - name: Build and archive cluster image
         working-directory: deploy
         env:
-          RUNTIME_IMAGE: ${{ env.RUNTIME_IMAGE_NAMESPACE }}/template-frontend:${{ github.sha }}
-          CLUSTER_IMAGE: ${{ env.CLUSTER_IMAGE_NAMESPACE }}/template-frontend:${{ github.sha }}-${{ matrix.arch }}
+          RUNTIME_IMAGE: ${{ env.RUNTIME_IMAGE_NAME }}:${{ needs.release-metadata.outputs.image_tag }}
+          CLUSTER_IMAGE: ${{ env.CLUSTER_IMAGE_NAME }}:${{ needs.release-metadata.outputs.image_tag }}-${{ matrix.arch }}
           ARCH: ${{ matrix.arch }}
           OSS_TAG: ${{ needs.release-metadata.outputs.oss_tag }}
         run: |
@@ -228,7 +234,9 @@ jobs:
 
   cluster-release:
     runs-on: ubuntu-latest
-    needs: cluster-images
+    needs:
+      - cluster-images
+      - release-metadata
     if: github.event_name == 'push' || inputs.publish_images == true || inputs.upload_oss == true
     permissions:
       contents: read
@@ -241,15 +249,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Publish cluster manifests and inspect sizes
+        env:
+          IMAGE_TAG: ${{ needs.release-metadata.outputs.image_tag }}
         run: |
           set -euo pipefail
-          docker buildx imagetools create -t "${CLUSTER_IMAGE_NAMESPACE}/template-frontend:${GITHUB_SHA}" \
-            "${CLUSTER_IMAGE_NAMESPACE}/template-frontend:${GITHUB_SHA}-amd64" \
-            "${CLUSTER_IMAGE_NAMESPACE}/template-frontend:${GITHUB_SHA}-arm64"
-          docker buildx imagetools create -t "${CLUSTER_IMAGE_NAMESPACE}/template-frontend:latest" \
-            "${CLUSTER_IMAGE_NAMESPACE}/template-frontend:${GITHUB_SHA}-amd64" \
-            "${CLUSTER_IMAGE_NAMESPACE}/template-frontend:${GITHUB_SHA}-arm64"
-          docker buildx imagetools inspect "${CLUSTER_IMAGE_NAMESPACE}/template-frontend:${GITHUB_SHA}"
+          docker buildx imagetools create -t "${CLUSTER_IMAGE_NAME}:${IMAGE_TAG}" \
+            "${CLUSTER_IMAGE_NAME}:${IMAGE_TAG}-amd64" \
+            "${CLUSTER_IMAGE_NAME}:${IMAGE_TAG}-arm64"
+          docker buildx imagetools create -t "${CLUSTER_IMAGE_NAME}:latest" \
+            "${CLUSTER_IMAGE_NAME}:${IMAGE_TAG}-amd64" \
+            "${CLUSTER_IMAGE_NAME}:${IMAGE_TAG}-arm64"
+          docker buildx imagetools inspect "${CLUSTER_IMAGE_NAME}:${IMAGE_TAG}"
 
   oss-upload:
     runs-on: ubuntu-latest
