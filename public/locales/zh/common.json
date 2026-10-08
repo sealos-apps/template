@@ -269,5 +269,12 @@
   "websocket": "WebSocket",
   "you_have_successfully_deployed_app": "您已成功部署一个应用！",
   "nodeport": "端口",
-  "traffic": "流量"
+  "traffic": "流量",
+  "Deleting": "删除中",
+  "Failed": "失败",
+  "Pausing": "暂停中",
+  "Restarting": "重启中",
+  "Starting": "启动中",
+  "Updating": "更新中",
+  "Waiting": "等待中"
 }

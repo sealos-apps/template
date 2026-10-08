@@ -11,6 +11,7 @@
     "test": "vitest --project unit",
     "test:watch": "vitest --project unit --watch",
     "test:ci": "vitest run --project unit",
+    "test:i18n": "node scripts/check-status-locales.mjs",
     "test:components": "vitest --project components",
     "test:components:ci": "vitest run --project components --passWithNoTests"
   },

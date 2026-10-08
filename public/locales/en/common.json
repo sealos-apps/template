@@ -269,5 +269,12 @@
   "websocket": "WebSocket",
   "you_have_successfully_deployed_app": "You have successfully deployed an application!",
   "nodeport": "Port",
-  "traffic": "Traffic"
+  "traffic": "Traffic",
+  "Deleting": "Deleting",
+  "Failed": "Failed",
+  "Pausing": "Pausing",
+  "Restarting": "Restarting",
+  "Starting": "Starting",
+  "Updating": "Updating",
+  "Waiting": "Waiting"
 }
