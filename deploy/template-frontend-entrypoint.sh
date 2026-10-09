@@ -2,20 +2,33 @@
 set -e
 
 # ============================================================================
-# template-frontend entrypoint
+# template entrypoint
 #
 # Upgrades any legacy `template-frontend` Helm release living in the legacy
 # `template-frontend` namespace, then installs/upgrades the current chart
 # into the `template-system` namespace.
 #
 # Migration behaviour:
-#   - If a Helm release named ${RELEASE_NAME} exists in ${LEGACY_RELEASE_NAMESPACE},
-#     it is uninstalled first. This is required because Helm cannot move a
-#     release across namespaces in-place.
-#   - The legacy namespace is removed afterwards (opt-out via CLEANUP_LEGACY_NS=false).
-#   - User-supplied values at /root/.sealos/cloud/values/apps/template/*.yaml are
-#     honoured. Legacy field names from previous charts are translated to the
-#     current schema before being passed to Helm.
+#   - If a Helm release named ${LEGACY_RELEASE_NAME} exists in
+#     ${LEGACY_RELEASE_NAMESPACE}, it is uninstalled first. This is required
+#     because Helm cannot move a release across namespaces in-place.
+#   - The legacy namespace is removed afterwards (opt-out via
+#     CLEANUP_LEGACY_NS=false).
+#   - User-supplied values at /root/.sealos/cloud/values/apps/template/*.yaml
+#     are honoured. Legacy field names from previous charts are translated
+#     to the current schema before being passed to Helm.
+#   - templateRepoUrl is deliberately NOT inherited from the legacy release
+#     (the legacy value may point to an in-cluster git service that no longer
+#     exists). Only an explicit env var or user values file setting is used;
+#     otherwise the chart default applies.
+# ============================================================================
+
+
+# ============================================================================
+# SECTION 1: Configuration variables
+#
+# Every environment variable the script recognises, with its default. Read
+# this section to see what can be tweaked from the outside.
 # ============================================================================
 
 RELEASE_NAME=${RELEASE_NAME:-"template"}
@@ -26,8 +39,31 @@ CLEANUP_LEGACY_NS=${CLEANUP_LEGACY_NS:-"true"}
 CHART_PATH=${CHART_PATH:-"./charts/template-frontend"}
 HELM_OPTS=${HELM_OPTS:-""}
 HELM_OPTIONS=${HELM_OPTIONS:-""}
-AUTO_CONFIG_HELM_OPTS=""
 TOOLS_FILE=${TOOLS_FILE:-"/root/.sealos/cloud/scripts/tools.sh"}
+
+# Accumulates `--set-string key=value` fragments produced by SECTION 4 and
+# SECTION 5; expanded into the final helm invocation in SECTION 9.
+AUTO_CONFIG_HELM_OPTS=""
+
+# User-supplied values layout on the platform host.
+SERVICE_NAME="template"
+USER_VALUES_DIR="/root/.sealos/cloud/values/apps/${SERVICE_NAME}"
+LEGACY_VALUES_PATH="/root/.sealos/cloud/values/core/${SERVICE_NAME}-values.yaml"
+DEFAULT_VALUES_PATH="./charts/template-frontend/template-frontend-values.yaml"
+DEFAULT_USER_VALUES_PATH="${USER_VALUES_DIR}/${SERVICE_NAME}-values.yaml"
+MIGRATED_VALUES_PATH="${USER_VALUES_DIR}/.migrated-values.yaml"
+
+# Path to the captured legacy release values, if a legacy release was found.
+# Populated in SECTION 5 and consumed by inherit_legacy_value.
+LEGACY_RELEASE_VALUES_YAML=""
+
+
+# ============================================================================
+# SECTION 2: Load platform tools
+#
+# sealos ships helper functions (get_cm_value, global_http_external_url,
+# read_cert_tls_reject_unauthorized) in tools.sh. Source it if present.
+# ============================================================================
 
 if [ -f "${TOOLS_FILE}" ]; then
   if [ "${TOOLS_FILE}" = "/root/.sealos/cloud/scripts/tools.sh" ]; then
@@ -39,6 +75,13 @@ if [ -f "${TOOLS_FILE}" ]; then
 else
   echo "Warning: platform tools file not found at ${TOOLS_FILE}; platform defaults must be supplied explicitly." >&2
 fi
+
+
+# ============================================================================
+# SECTION 3: Helper functions
+#
+# All function definitions live here so the main flow below reads top-down.
+# ============================================================================
 
 # Older platform images may not ship tools.sh. Keep environment-provided
 # values usable and make the ConfigMap lookup an optional fallback without
@@ -54,6 +97,8 @@ read_platform_config_value() {
   fi
 }
 
+# Append "--set-string key=value" to AUTO_CONFIG_HELM_OPTS, but only when
+# the value is non-empty.
 add_set_string() {
   local key="$1"
   local value="$2"
@@ -62,51 +107,10 @@ add_set_string() {
   fi
 }
 
-GLOBAL_HTTP_EXTERNAL_URL="$(global_http_external_url 2>/dev/null || true)"
-SEALOS_CLOUD_DOMAIN=${SEALOS_CLOUD_DOMAIN:-"${cloudDomain:-$(read_platform_config_value sealos-system sealos-config cloudDomain)}"}
-if [ -z "${SEALOS_CLOUD_DOMAIN}" ] && [ -n "${GLOBAL_HTTP_EXTERNAL_URL}" ]; then
-  SEALOS_CLOUD_DOMAIN="${GLOBAL_HTTP_EXTERNAL_URL#*://}"
-  SEALOS_CLOUD_DOMAIN="${SEALOS_CLOUD_DOMAIN%%/*}"
-  SEALOS_CLOUD_DOMAIN="${SEALOS_CLOUD_DOMAIN%%:*}"
-fi
-add_set_string templateConfig.cloudDomain "${SEALOS_CLOUD_DOMAIN}"
-add_set_string cloudDomain "${SEALOS_CLOUD_DOMAIN}"
-SEALOS_CLOUD_PORT=${SEALOS_CLOUD_PORT:-"${cloudPort:-$(read_platform_config_value sealos-system sealos-config cloudPort)}"}
-add_set_string templateConfig.cloudPort "${SEALOS_CLOUD_PORT}"
-add_set_string cloudPort "${SEALOS_CLOUD_PORT}"
-SEALOS_HTTP_PORT=${SEALOS_HTTP_PORT:-"${httpPort:-$(read_platform_config_value sealos-system sealos-config httpPort)}"}
-add_set_string templateConfig.httpPort "${SEALOS_HTTP_PORT}"
-add_set_string httpPort "${SEALOS_HTTP_PORT}"
-SEALOS_DISABLE_HTTPS=${SEALOS_DISABLE_HTTPS:-"${disableHttps:-$(read_platform_config_value sealos-system sealos-config disableHttps)}"}
-add_set_string templateConfig.disableHttps "${SEALOS_DISABLE_HTTPS}"
-add_set_string disableHttps "${SEALOS_DISABLE_HTTPS}"
-SEALOS_CERT_SECRET_NAME=${SEALOS_CERT_SECRET_NAME:-"${certSecretName:-$(read_platform_config_value sealos-system sealos-config certSecretName)}"}
-add_set_string templateConfig.certSecretName "${SEALOS_CERT_SECRET_NAME}"
-add_set_string certSecretName "${SEALOS_CERT_SECRET_NAME}"
-
-TLS_REJECT_UNAUTHORIZED="$(read_cert_tls_reject_unauthorized 2>/dev/null || true)"
-if [ -z "${TLS_REJECT_UNAUTHORIZED}" ]; then
-  CERT_MODE=${CERT_MODE:-"$(kubectl get configmap cert-config -n sealos-system -o 'jsonpath={.data.CERT_MODE}' 2>/dev/null || true)"}
-  TLS_REJECT_UNAUTHORIZED=1
-  case "${CERT_MODE}" in
-    https|acme)
-      TLS_REJECT_UNAUTHORIZED=0
-      ;;
-  esac
-fi
-# Helm --set-string platform.tlsRejectUnauthorized=${TLS_REJECT_UNAUTHORIZED}
-AUTO_CONFIG_HELM_OPTS="${AUTO_CONFIG_HELM_OPTS} --set-string platform.tlsRejectUnauthorized=${TLS_REJECT_UNAUTHORIZED}"
-
-# ----------------------------------------------------------------------------
-# Inherit values from any legacy release BEFORE uninstalling it. This lets
-# upgrades carry forward operator-tuned fields (like templateRepoUrl) that
-# were originally supplied via --set and never written back to the user
-# values files. Explicit environment variables always win.
-# ----------------------------------------------------------------------------
+# inherit_legacy_value <yaml.path.in.release.values> <env-var-value>
+# Echoes the env-var value if set, otherwise the value pulled from the
+# captured legacy release values, otherwise empty.
 inherit_legacy_value() {
-  # inherit_legacy_value <yaml.path.in.release.values> <env-var-value>
-  # Echoes the env-var value if set, otherwise the value pulled from the
-  # legacy release, otherwise empty.
   local path="$1"
   local env_value="$2"
   if [ -n "${env_value}" ]; then
@@ -136,36 +140,7 @@ sys.stdout.write(str(cur))
 PY
 }
 
-LEGACY_RELEASE_VALUES_YAML=""
-if command -v helm >/dev/null 2>&1 \
-   && [ "${LEGACY_RELEASE_NAMESPACE}" != "${RELEASE_NAMESPACE}" -o "${LEGACY_RELEASE_NAME}" != "${RELEASE_NAME}" ] \
-   && helm status "${LEGACY_RELEASE_NAME}" -n "${LEGACY_RELEASE_NAMESPACE}" >/dev/null 2>&1; then
-  LEGACY_RELEASE_VALUES_YAML="$(mktemp -t legacy-release-values.XXXXXX.yaml)"
-  helm get values "${LEGACY_RELEASE_NAME}" -n "${LEGACY_RELEASE_NAMESPACE}" -o yaml > "${LEGACY_RELEASE_VALUES_YAML}" 2>/dev/null || true
-  echo "Captured values from legacy release '${LEGACY_RELEASE_NAME}' in namespace '${LEGACY_RELEASE_NAMESPACE}' for inheritance."
-fi
-
-# templateRepoUrl is deliberately NOT inherited from the legacy release. The
-# legacy value may point to an in-cluster git service (e.g. gogs.<cloudDomain>)
-# that no longer exists, which would break the new frontend at startup. Only
-# honour an explicitly provided value (env var or user values file); otherwise
-# fall through to the chart default (https://github.com/labring-actions/templates).
-add_set_string templateConfig.userDomain             "$(inherit_legacy_value templateConfig.userDomain             "${userDomain:-}")"
-add_set_string templateConfig.templateRepoUrl        "${templateRepoUrl:-}"
-add_set_string templateConfig.templateRepoBranch     "$(inherit_legacy_value templateConfig.templateRepoBranch     "${templateRepoBranch:-}")"
-add_set_string templateConfig.templateRepoPath       "$(inherit_legacy_value templateConfig.templateRepoPath       "${templateRepoPath:-}")"
-add_set_string templateConfig.guideEnabled           "$(inherit_legacy_value templateConfig.guideEnabled           "${guideEnabled:-}")"
-add_set_string templateConfig.billingUrl             "$(inherit_legacy_value templateConfig.billingUrl             "${billingUrl:-}")"
-add_set_string templateConfig.enableReadmeFetch      "$(inherit_legacy_value templateConfig.templateRepoEnableReadmeFetch "${enableReadmeFetch:-}")"
-add_set_string templateConfig.brandName              "$(inherit_legacy_value templateConfig.brandName              "${brandName:-}")"
-add_set_string templateConfig.forcedLanguage         "$(inherit_legacy_value templateConfig.forcedLanguage         "${forcedLanguage:-}")"
-add_set_string templateConfig.currencySymbol         "$(inherit_legacy_value templateConfig.currencySymbol         "${currencySymbol:-}")"
-
-# ----------------------------------------------------------------------------
-# Step 1: Uninstall any legacy release living in the legacy namespace.
-# Helm cannot move a release across namespaces, so the only safe way to
-# relocate is to uninstall first, then install into the new namespace.
-# ----------------------------------------------------------------------------
+# Uninstall the named Helm release from the given namespace, if it exists.
 uninstall_legacy_release() {
   local name="$1"
   local ns="$2"
@@ -182,6 +157,7 @@ uninstall_legacy_release() {
   fi
 }
 
+# Delete the legacy namespace after the legacy release has been removed.
 cleanup_legacy_namespace() {
   local ns="$1"
   if [ "${CLEANUP_LEGACY_NS}" != "true" ]; then
@@ -197,20 +173,8 @@ cleanup_legacy_namespace() {
   fi
 }
 
-# Uninstall the legacy release if it lives anywhere other than the target
-# (different namespace OR different release name). Both situations require a
-# real uninstall because Helm cannot rename a release nor move it across
-# namespaces in place.
-if [ "${LEGACY_RELEASE_NAMESPACE}" != "${RELEASE_NAMESPACE}" ] || [ "${LEGACY_RELEASE_NAME}" != "${RELEASE_NAME}" ]; then
-  uninstall_legacy_release "${LEGACY_RELEASE_NAME}" "${LEGACY_RELEASE_NAMESPACE}"
-  cleanup_legacy_namespace "${LEGACY_RELEASE_NAMESPACE}"
-fi
-
-# ----------------------------------------------------------------------------
-# Step 2: Adopt any cluster-scoped resources that might have survived an
-# earlier uninstall (or were created outside Helm) so the new release can
-# take ownership cleanly.
-# ----------------------------------------------------------------------------
+# Adopt a namespaced resource into the new release by setting the Helm
+# ownership annotations on it.
 adopt_namespaced_resource() {
   local namespace="$1"
   local kind="$2"
@@ -222,6 +186,7 @@ adopt_namespaced_resource() {
   fi
 }
 
+# Adopt a cluster-scoped resource into the new release.
 adopt_cluster_resource() {
   local kind="$1"
   local name="$2"
@@ -232,37 +197,8 @@ adopt_cluster_resource() {
   fi
 }
 
-echo "Checking and adopting existing resources..."
-if kubectl get namespace "${RELEASE_NAMESPACE}" >/dev/null 2>&1; then
-  kubectl label namespace "${RELEASE_NAMESPACE}" app.kubernetes.io/managed-by=Helm --overwrite >/dev/null 2>&1 || true
-  kubectl annotate namespace "${RELEASE_NAMESPACE}" meta.helm.sh/release-name="${RELEASE_NAME}" meta.helm.sh/release-namespace="${RELEASE_NAMESPACE}" --overwrite >/dev/null 2>&1 || true
-
-  adopt_namespaced_resource "${RELEASE_NAMESPACE}" configmap template-config
-  adopt_namespaced_resource "${RELEASE_NAMESPACE}" service template
-  adopt_namespaced_resource "${RELEASE_NAMESPACE}" deployment template
-  adopt_namespaced_resource "${RELEASE_NAMESPACE}" ingress template
-  adopt_namespaced_resource "${RELEASE_NAMESPACE}" cronjob template-static
-fi
-
-adopt_namespaced_resource app-system apps.app.sealos.io template
-adopt_cluster_resource clusterrole template-static-role
-adopt_cluster_resource clusterrolebinding template-static-role-binding
-
-# ----------------------------------------------------------------------------
-# Step 3: Resolve user-supplied values files.
-#
-# The platform convention is /root/.sealos/cloud/values/apps/<app>/<app>-values.yaml.
-# For the template frontend the app directory is "template" (not the release
-# name), so SERVICE_NAME is "template". A legacy location under
-# /root/.sealos/cloud/values/core/template-frontend-values.yaml is also
-# honoured for backwards compatibility.
-# ----------------------------------------------------------------------------
-SERVICE_NAME="template"
-USER_VALUES_DIR="/root/.sealos/cloud/values/apps/${SERVICE_NAME}"
-LEGACY_VALUES_PATH="/root/.sealos/cloud/values/core/${SERVICE_NAME}-values.yaml"
-DEFAULT_VALUES_PATH="./charts/template-frontend/template-frontend-values.yaml"
-DEFAULT_USER_VALUES_PATH="${USER_VALUES_DIR}/${SERVICE_NAME}-values.yaml"
-
+# Populate the user values directory with a starting values file, preferring
+# the legacy platform location if it exists.
 copy_default_values() {
   if [ -f "${LEGACY_VALUES_PATH}" ]; then
     echo "WARN: copying legacy values from ${LEGACY_VALUES_PATH} to ${DEFAULT_USER_VALUES_PATH}." >&2
@@ -273,38 +209,9 @@ copy_default_values() {
   fi
 }
 
-if [ ! -d "${USER_VALUES_DIR}" ]; then
-  echo "WARN: ${USER_VALUES_DIR} does not exist; creating it with the chart defaults." >&2
-  mkdir -p "${USER_VALUES_DIR}"
-  copy_default_values
-elif ! find "${USER_VALUES_DIR}" -maxdepth 1 -type f -name '*-values.yaml' -print -quit | grep -q .; then
-  echo "WARN: ${USER_VALUES_DIR} has no *-values.yaml file; writing defaults." >&2
-  copy_default_values
-elif [ -f "${LEGACY_VALUES_PATH}" ] && [ -f "${DEFAULT_USER_VALUES_PATH}" ] && cmp -s "${DEFAULT_USER_VALUES_PATH}" "${DEFAULT_VALUES_PATH}"; then
-  echo "WARN: migrating legacy values from ${LEGACY_VALUES_PATH}..." >&2
-  cp "${LEGACY_VALUES_PATH}" "${DEFAULT_USER_VALUES_PATH}"
-fi
-
-# ----------------------------------------------------------------------------
-# Step 4: Translate legacy values fields to the current chart schema.
-#
-# Older charts used fields like templateConfig.templateRepoEnableReadmeFetch,
-# templateConfig.templateRepoAutoInject, templateConfig.templateRepoProvider,
-# templateConfig.templateRepoGitSslNoVerify, templateConfig.showAuthor,
-# templateConfig.accountUrl, templateConfig.templateCategories and
-# templateConfig.tlsRejectUnauthorized. The current chart no longer consumes
-# these, and the boolean-typed fields it does consume (guideEnabled,
-# enableReadmeFetch) must be YAML booleans rather than quoted strings.
-#
-# We do this by reading the user's values files, extracting the fields the
-# current chart still recognises, and re-emitting them as an additional
-# values file passed AFTER the user files so it takes precedence.
-# ----------------------------------------------------------------------------
-MIGRATED_VALUES_PATH="${USER_VALUES_DIR}/.migrated-values.yaml"
-
+# Very small YAML scalar extractor: matches "  <key>: <value>" under a given
+# parent key. Only supports single-level nesting under templateConfig.
 extract_yaml_field() {
-  # Very small YAML scalar extractor: matches "  <key>: <value>" under a given
-  # parent key. Only supports single-level nesting under templateConfig.
   local file="$1"
   local parent="$2"
   local key="$3"
@@ -323,6 +230,19 @@ extract_yaml_field() {
   ' "${file}" 2>/dev/null
 }
 
+# Translate legacy user values files to the current chart schema.
+#
+# Older charts used fields like templateConfig.templateRepoEnableReadmeFetch,
+# templateConfig.templateRepoAutoInject, templateConfig.templateRepoProvider,
+# templateConfig.templateRepoGitSslNoVerify, templateConfig.showAuthor,
+# templateConfig.accountUrl, templateConfig.templateCategories and
+# templateConfig.tlsRejectUnauthorized. The current chart no longer consumes
+# these, and the boolean-typed fields it does consume (guideEnabled,
+# enableReadmeFetch) must be YAML booleans rather than quoted strings.
+#
+# We do this by reading the user's values files, extracting the fields the
+# current chart still recognises, and re-emitting them as an additional
+# values file passed AFTER the user files so it takes precedence.
 migrate_values() {
   local src="$1"
   [ -f "${src}" ] || return 0
@@ -364,15 +284,159 @@ migrate_values() {
   fi
 }
 
+
+# ============================================================================
+# SECTION 4: Resolve platform configuration
+#
+# Pull cloudDomain / cloudPort / httpPort / disableHttps / certSecretName
+# from the platform's sealos-config ConfigMap (or env overrides) and feed
+# them into Helm. Also derive platform.tlsRejectUnauthorized from CERT_MODE.
+# ============================================================================
+
+GLOBAL_HTTP_EXTERNAL_URL="$(global_http_external_url 2>/dev/null || true)"
+
+SEALOS_CLOUD_DOMAIN=${SEALOS_CLOUD_DOMAIN:-"${cloudDomain:-$(read_platform_config_value sealos-system sealos-config cloudDomain)}"}
+if [ -z "${SEALOS_CLOUD_DOMAIN}" ] && [ -n "${GLOBAL_HTTP_EXTERNAL_URL}" ]; then
+  SEALOS_CLOUD_DOMAIN="${GLOBAL_HTTP_EXTERNAL_URL#*://}"
+  SEALOS_CLOUD_DOMAIN="${SEALOS_CLOUD_DOMAIN%%/*}"
+  SEALOS_CLOUD_DOMAIN="${SEALOS_CLOUD_DOMAIN%%:*}"
+fi
+add_set_string templateConfig.cloudDomain "${SEALOS_CLOUD_DOMAIN}"
+add_set_string cloudDomain "${SEALOS_CLOUD_DOMAIN}"
+
+SEALOS_CLOUD_PORT=${SEALOS_CLOUD_PORT:-"${cloudPort:-$(read_platform_config_value sealos-system sealos-config cloudPort)}"}
+add_set_string templateConfig.cloudPort "${SEALOS_CLOUD_PORT}"
+add_set_string cloudPort "${SEALOS_CLOUD_PORT}"
+
+SEALOS_HTTP_PORT=${SEALOS_HTTP_PORT:-"${httpPort:-$(read_platform_config_value sealos-system sealos-config httpPort)}"}
+add_set_string templateConfig.httpPort "${SEALOS_HTTP_PORT}"
+add_set_string httpPort "${SEALOS_HTTP_PORT}"
+
+SEALOS_DISABLE_HTTPS=${SEALOS_DISABLE_HTTPS:-"${disableHttps:-$(read_platform_config_value sealos-system sealos-config disableHttps)}"}
+add_set_string templateConfig.disableHttps "${SEALOS_DISABLE_HTTPS}"
+add_set_string disableHttps "${SEALOS_DISABLE_HTTPS}"
+
+SEALOS_CERT_SECRET_NAME=${SEALOS_CERT_SECRET_NAME:-"${certSecretName:-$(read_platform_config_value sealos-system sealos-config certSecretName)}"}
+add_set_string templateConfig.certSecretName "${SEALOS_CERT_SECRET_NAME}"
+add_set_string certSecretName "${SEALOS_CERT_SECRET_NAME}"
+
+TLS_REJECT_UNAUTHORIZED="$(read_cert_tls_reject_unauthorized 2>/dev/null || true)"
+if [ -z "${TLS_REJECT_UNAUTHORIZED}" ]; then
+  CERT_MODE=${CERT_MODE:-"$(kubectl get configmap cert-config -n sealos-system -o 'jsonpath={.data.CERT_MODE}' 2>/dev/null || true)"}
+  TLS_REJECT_UNAUTHORIZED=1
+  case "${CERT_MODE}" in
+    https|acme)
+      TLS_REJECT_UNAUTHORIZED=0
+      ;;
+  esac
+fi
+AUTO_CONFIG_HELM_OPTS="${AUTO_CONFIG_HELM_OPTS} --set-string platform.tlsRejectUnauthorized=${TLS_REJECT_UNAUTHORIZED}"
+
+
+# ============================================================================
+# SECTION 5: Capture legacy release values and inherit fields
+#
+# If a legacy release exists, capture its values BEFORE we uninstall it so
+# that operator-tuned fields can be carried forward. Explicit environment
+# variables always win over inherited values. templateRepoUrl is the one
+# field we deliberately do NOT inherit (see file header).
+# ============================================================================
+
+if command -v helm >/dev/null 2>&1 \
+   && { [ "${LEGACY_RELEASE_NAMESPACE}" != "${RELEASE_NAMESPACE}" ] || [ "${LEGACY_RELEASE_NAME}" != "${RELEASE_NAME}" ]; } \
+   && helm status "${LEGACY_RELEASE_NAME}" -n "${LEGACY_RELEASE_NAMESPACE}" >/dev/null 2>&1; then
+  LEGACY_RELEASE_VALUES_YAML="$(mktemp -t legacy-release-values.XXXXXX.yaml)"
+  helm get values "${LEGACY_RELEASE_NAME}" -n "${LEGACY_RELEASE_NAMESPACE}" -o yaml > "${LEGACY_RELEASE_VALUES_YAML}" 2>/dev/null || true
+  echo "Captured values from legacy release '${LEGACY_RELEASE_NAME}' in namespace '${LEGACY_RELEASE_NAMESPACE}' for inheritance."
+fi
+
+add_set_string templateConfig.userDomain             "$(inherit_legacy_value templateConfig.userDomain             "${userDomain:-}")"
+add_set_string templateConfig.templateRepoUrl        "${templateRepoUrl:-}"
+add_set_string templateConfig.templateRepoBranch     "$(inherit_legacy_value templateConfig.templateRepoBranch     "${templateRepoBranch:-}")"
+add_set_string templateConfig.templateRepoPath       "$(inherit_legacy_value templateConfig.templateRepoPath       "${templateRepoPath:-}")"
+add_set_string templateConfig.guideEnabled           "$(inherit_legacy_value templateConfig.guideEnabled           "${guideEnabled:-}")"
+add_set_string templateConfig.billingUrl             "$(inherit_legacy_value templateConfig.billingUrl             "${billingUrl:-}")"
+add_set_string templateConfig.enableReadmeFetch      "$(inherit_legacy_value templateConfig.templateRepoEnableReadmeFetch "${enableReadmeFetch:-}")"
+add_set_string templateConfig.brandName              "$(inherit_legacy_value templateConfig.brandName              "${brandName:-}")"
+add_set_string templateConfig.forcedLanguage         "$(inherit_legacy_value templateConfig.forcedLanguage         "${forcedLanguage:-}")"
+add_set_string templateConfig.currencySymbol         "$(inherit_legacy_value templateConfig.currencySymbol         "${currencySymbol:-}")"
+
+
+# ============================================================================
+# SECTION 6: Uninstall the legacy release
+#
+# Helm cannot rename a release nor move it across namespaces, so the only
+# safe way to relocate is to uninstall first, then install into the new
+# location. Skipped automatically when the legacy coordinates match the
+# target ones.
+# ============================================================================
+
+if [ "${LEGACY_RELEASE_NAMESPACE}" != "${RELEASE_NAMESPACE}" ] || [ "${LEGACY_RELEASE_NAME}" != "${RELEASE_NAME}" ]; then
+  uninstall_legacy_release "${LEGACY_RELEASE_NAME}" "${LEGACY_RELEASE_NAMESPACE}"
+  cleanup_legacy_namespace "${LEGACY_RELEASE_NAMESPACE}"
+fi
+
+
+# ============================================================================
+# SECTION 7: Adopt any pre-existing resources
+#
+# Resources that already exist (from a previous install that was not Helm-
+# managed, or that survived a partial uninstall) need Helm ownership
+# annotations before helm upgrade -i will accept them.
+# ============================================================================
+
+echo "Checking and adopting existing resources..."
+if kubectl get namespace "${RELEASE_NAMESPACE}" >/dev/null 2>&1; then
+  kubectl label namespace "${RELEASE_NAMESPACE}" app.kubernetes.io/managed-by=Helm --overwrite >/dev/null 2>&1 || true
+  kubectl annotate namespace "${RELEASE_NAMESPACE}" meta.helm.sh/release-name="${RELEASE_NAME}" meta.helm.sh/release-namespace="${RELEASE_NAMESPACE}" --overwrite >/dev/null 2>&1 || true
+
+  adopt_namespaced_resource "${RELEASE_NAMESPACE}" configmap template-config
+  adopt_namespaced_resource "${RELEASE_NAMESPACE}" service template
+  adopt_namespaced_resource "${RELEASE_NAMESPACE}" deployment template
+  adopt_namespaced_resource "${RELEASE_NAMESPACE}" ingress template
+  adopt_namespaced_resource "${RELEASE_NAMESPACE}" cronjob template-static
+fi
+
+adopt_namespaced_resource app-system apps.app.sealos.io template
+adopt_cluster_resource clusterrole template-static-role
+adopt_cluster_resource clusterrolebinding template-static-role-binding
+
+
+# ============================================================================
+# SECTION 8: Prepare user-supplied values
+#
+# Make sure the user values directory exists and contains at least one
+# *-values.yaml file, then translate any legacy field names to the current
+# chart schema by writing a `.migrated-values.yaml` alongside them.
+# ============================================================================
+
+if [ ! -d "${USER_VALUES_DIR}" ]; then
+  echo "WARN: ${USER_VALUES_DIR} does not exist; creating it with the chart defaults." >&2
+  mkdir -p "${USER_VALUES_DIR}"
+  copy_default_values
+elif ! find "${USER_VALUES_DIR}" -maxdepth 1 -type f -name '*-values.yaml' -print -quit | grep -q .; then
+  echo "WARN: ${USER_VALUES_DIR} has no *-values.yaml file; writing defaults." >&2
+  copy_default_values
+elif [ -f "${LEGACY_VALUES_PATH}" ] && [ -f "${DEFAULT_USER_VALUES_PATH}" ] && cmp -s "${DEFAULT_USER_VALUES_PATH}" "${DEFAULT_VALUES_PATH}"; then
+  echo "WARN: migrating legacy values from ${LEGACY_VALUES_PATH}..." >&2
+  cp "${LEGACY_VALUES_PATH}" "${DEFAULT_USER_VALUES_PATH}"
+fi
+
 # Migrate every user values file in lexical order so the last one wins, just
 # like Helm's own -f merging.
 for f in $(find "${USER_VALUES_DIR}" -maxdepth 1 -type f -name '*-values.yaml' ! -name '.migrated-values.yaml' -print | sort); do
   migrate_values "${f}"
 done
 
-# ----------------------------------------------------------------------------
-# Step 5: Build the helm command line and upgrade/install.
-# ----------------------------------------------------------------------------
+
+# ============================================================================
+# SECTION 9: Deploy
+#
+# Build the final helm command line and run upgrade -i. Values files are
+# layered from lowest to highest precedence; the migrated values file goes
+# last so translated fields win over the originals they were derived from.
+# ============================================================================
+
 HELM_VALUE_ARGS=(-f "./charts/template-frontend/values.yaml")
 if [ -f "${LEGACY_VALUES_PATH}" ]; then
   HELM_VALUE_ARGS+=(-f "${LEGACY_VALUES_PATH}")
@@ -380,7 +444,6 @@ fi
 while IFS= read -r values_file; do
   HELM_VALUE_ARGS+=(-f "${values_file}")
 done < <(find "${USER_VALUES_DIR}" -maxdepth 1 -type f -name '*-values.yaml' ! -name '.migrated-values.yaml' -print | sort)
-# Migrated values last so translated fields take precedence over the originals.
 if [ -f "${MIGRATED_VALUES_PATH}" ]; then
   HELM_VALUE_ARGS+=(-f "${MIGRATED_VALUES_PATH}")
 fi
