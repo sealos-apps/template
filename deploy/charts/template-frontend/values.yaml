@@ -4,7 +4,7 @@ image: ghcr.io/sealos-apps/template/template-frontend:latest
 imagePullPolicy: Always
 
 imagePullSecrets: []
-fullnameOverride: "template-frontend"
+fullnameOverride: "template"
 
 replicaCount: 1
 
@@ -82,5 +82,5 @@ affinity:
               - key: "app"
                 operator: In
                 values:
-                  - template-frontend
+                  - template
           topologyKey: "kubernetes.io/hostname"

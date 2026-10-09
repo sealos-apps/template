@@ -1,18 +1,18 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "template-frontend.fullname" . }}-config
+  name: {{ include "template.fullname" . }}-config
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "template-frontend.labels" . | nindent 4 }}
+    {{- include "template.labels" . | nindent 4 }}
 data:
   config.yaml: |-
     # yaml-language-server: $schema=config.schema.json
     cloud:
-        domain: {{ include "template-frontend.cloudDomain" . | quote }}
-        port: {{ if eq (include "template-frontend.scheme" .) "http" }}{{ default 80 (include "template-frontend.httpPort" .) }}{{ else }}{{ default 443 (include "template-frontend.cloudPort" .) }}{{ end }}
+        domain: {{ include "template.cloudDomain" . | quote }}
+        port: {{ if eq (include "template.scheme" .) "http" }}{{ default 80 (include "template.httpPort" .) }}{{ else }}{{ default 443 (include "template.cloudPort" .) }}{{ end }}
         regionUid: ""
-        certSecretName: {{ include "template-frontend.certSecretName" . | quote }}
+        certSecretName: {{ include "template.certSecretName" . | quote }}
 
     template:
         ui:
@@ -20,7 +20,7 @@ data:
             forcedLanguage: {{ .Values.templateConfig.forcedLanguage | quote }}
             currencySymbol: {{ .Values.templateConfig.currencySymbol | quote }}
             meta:
-                canonicalUrl: {{ include "template-frontend.appUrl" . | quote }}
+                canonicalUrl: {{ include "template.appUrl" . | quote }}
                 customScripts: []
             carousel:
                 enabled: false
@@ -81,7 +81,7 @@ data:
               i18n:
                   en: Tools
                   zh: 工具
-        desktopDomain: {{ include "template-frontend.cloudDomain" . | quote }}
+        desktopDomain: {{ include "template.cloudDomain" . | quote }}
         userDomain: {{ .Values.templateConfig.userDomain | quote }}
         billingUrl: {{ .Values.templateConfig.billingUrl | quote }}
         analytics:

@@ -1,15 +1,15 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "template-frontend.fullname" . }}
+  name: {{ include "template.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "template-frontend.labels" . | nindent 4 }}
+    {{- include "template.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      {{- include "template-frontend.selectorLabels" . | nindent 6 }}
+      {{- include "template.selectorLabels" . | nindent 6 }}
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -18,7 +18,7 @@ spec:
   template:
     metadata:
       labels:
-        {{- include "template-frontend.labels" . | nindent 8 }}
+        {{- include "template.labels" . | nindent 8 }}
       {{- with .Values.podAnnotations }}
       annotations:
         {{- toYaml . | nindent 8 }}
@@ -31,7 +31,7 @@ spec:
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
-        - name: {{ .Chart.Name }}
+        - name: template
           image: {{ .Values.image | quote }}
           imagePullPolicy: {{ .Values.imagePullPolicy }}
           env:
@@ -58,7 +58,7 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 3
           volumeMounts:
-            - name: template-frontend-volume
+            - name: template-volume
               mountPath: /app/data/config.yaml
               subPath: config.yaml
       {{- with .Values.affinity }}
@@ -66,6 +66,6 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       volumes:
-        - name: template-frontend-volume
+        - name: template-volume
           configMap:
-            name: {{ include "template-frontend.fullname" . }}-config
+            name: {{ include "template.fullname" . }}-config

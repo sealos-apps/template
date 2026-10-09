@@ -2,8 +2,8 @@ apiVersion: v1
 kind: Service
 metadata:
   labels:
-    {{- include "template-frontend.labels" . | nindent 4 }}
-  name: {{ include "template-frontend.fullname" . }}
+    {{- include "template.labels" . | nindent 4 }}
+  name: {{ include "template.fullname" . }}
   namespace: {{ .Release.Namespace }}
 spec:
   type: {{ .Values.service.type }}
@@ -13,4 +13,4 @@ spec:
       protocol: TCP
       targetPort: {{ .Values.service.port }}
   selector:
-    {{- include "template-frontend.selectorLabels" . | nindent 4 }}
+    {{- include "template.selectorLabels" . | nindent 4 }}
