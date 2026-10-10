@@ -129,23 +129,18 @@ if [ -z "${SEALOS_CLOUD_DOMAIN}" ] && [ -n "${GLOBAL_HTTP_EXTERNAL_URL}" ]; then
   SEALOS_CLOUD_DOMAIN="${SEALOS_CLOUD_DOMAIN%%/*}"
   SEALOS_CLOUD_DOMAIN="${SEALOS_CLOUD_DOMAIN%%:*}"
 fi
-add_set_string templateConfig.cloudDomain "${SEALOS_CLOUD_DOMAIN}"
 add_set_string cloudDomain "${SEALOS_CLOUD_DOMAIN}"
 
 SEALOS_CLOUD_PORT=${SEALOS_CLOUD_PORT:-"${cloudPort:-$(read_platform_config_value sealos-system sealos-config cloudPort)}"}
-add_set_string templateConfig.cloudPort "${SEALOS_CLOUD_PORT}"
 add_set_string cloudPort "${SEALOS_CLOUD_PORT}"
 
 SEALOS_HTTP_PORT=${SEALOS_HTTP_PORT:-"${httpPort:-$(read_platform_config_value sealos-system sealos-config httpPort)}"}
-add_set_string templateConfig.httpPort "${SEALOS_HTTP_PORT}"
 add_set_string httpPort "${SEALOS_HTTP_PORT}"
 
 SEALOS_DISABLE_HTTPS=${SEALOS_DISABLE_HTTPS:-"${disableHttps:-$(read_platform_config_value sealos-system sealos-config disableHttps)}"}
-add_set_string templateConfig.disableHttps "${SEALOS_DISABLE_HTTPS}"
 add_set_string disableHttps "${SEALOS_DISABLE_HTTPS}"
 
 SEALOS_CERT_SECRET_NAME=${SEALOS_CERT_SECRET_NAME:-"${certSecretName:-$(read_platform_config_value sealos-system sealos-config certSecretName)}"}
-add_set_string templateConfig.certSecretName "${SEALOS_CERT_SECRET_NAME}"
 add_set_string certSecretName "${SEALOS_CERT_SECRET_NAME}"
 
 TLS_REJECT_UNAUTHORIZED="$(read_cert_tls_reject_unauthorized 2>/dev/null || true)"

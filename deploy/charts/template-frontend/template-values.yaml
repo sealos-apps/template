@@ -50,16 +50,15 @@ resources:
     cpu: 10m
     memory: 128Mi
 
-# === Platform overrides ===
-# Leave these blank. The entrypoint fills them in from the cluster's
-# platform configuration at deploy time.
-cloudDomain: ""
-cloudPort: ""
-httpPort: ""
-disableHttps: ""
-certSecretName: ""
-
-platform:
-  # 1 rejects untrusted certificates; the entrypoint switches to 0 when the
-  # cluster uses a trusted certificate (CERT_MODE=https or acme).
-  tlsRejectUnauthorized: "1"
+# === Platform-resolved fields (DO NOT EDIT) ===
+# These fields are resolved by the entrypoint script at deploy time by
+# reading the cluster's sealos-config and cert-config ConfigMaps, and
+# injected via --set-string. They are shown here only as documentation;
+# setting them has no effect on the deployment.
+#
+#   cloudDomain, cloudPort, httpPort, disableHttps, certSecretName
+#   platform.tlsRejectUnauthorized
+#
+# If the entrypoint is bypassed and these are needed, set them explicitly
+# here — but be aware that hardcoding cloudDomain will tie the deployment
+# to a single cluster.
