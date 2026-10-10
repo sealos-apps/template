@@ -50,6 +50,24 @@ resources:
     cpu: 10m
     memory: 128Mi
 
+# === Scheduling ===
+# Default: spread replicas across different nodes (pod anti-affinity on the
+# "app: template" label). Remove or override this block to change the
+# scheduling behaviour, e.g. to add node selectors, tolerations, or to
+# switch to requiredDuringScheduling for stricter placement.
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: "app"
+                operator: In
+                values:
+                  - template
+          topologyKey: "kubernetes.io/hostname"
+
 # === Platform-resolved fields (DO NOT EDIT) ===
 # These fields are resolved by the entrypoint script at deploy time by
 # reading the cluster's sealos-config and cert-config ConfigMaps, and
