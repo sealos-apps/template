@@ -1,0 +1,65 @@
+# Custom values for the template helm chart.
+#
+# This file is the primary user-facing configuration surface. Copy it to
+# /root/.sealos/cloud/values/apps/template/template-values.yaml on the
+# target cluster and edit the fields below to customise the deployment.
+#
+# Fields that are platform-specific (cloudDomain, cloudPort, httpPort,
+# disableHttps, certSecretName, platform.tlsRejectUnauthorized) are
+# intentionally left blank here: the entrypoint script reads them from the
+# cluster's sealos-config / cert-config ConfigMaps at deploy time and
+# injects them via --set-string, so they always match the target cluster.
+
+# === Business integration ===
+templateConfig:
+  # Template repository to fetch app templates from.
+  templateRepoUrl: "https://github.com/labring-actions/templates"
+  templateRepoBranch: "main"
+  templateRepoPath: "template"
+
+  # Billing service endpoint.
+  # Important: the frontend talks to this URL for all billing operations.
+  # The default points at the in-cluster account-service; only override
+  # if you are running an external billing service.
+  billingUrl: "http://account-service.account-system.svc:2333"
+
+  # Optional user-facing domain suffix for tenant sub-domains.
+  userDomain: ""
+
+  # Feature toggles.
+  guideEnabled: true
+  enableReadmeFetch: true
+
+  # Branding.
+  brandName: "Sealos"
+  forcedLanguage: "en"
+  currencySymbol: "shellCoin"
+
+  # Rybbit analytics (self-hosted). Empty disables tracking.
+  rybbitHost: ""
+  rybbitSiteId: ""
+
+# === Replicas and resources ===
+replicaCount: 1
+
+resources:
+  limits:
+    cpu: 2000m
+    memory: 1024Mi
+  requests:
+    cpu: 10m
+    memory: 128Mi
+
+# === Platform overrides ===
+# Leave these blank. The entrypoint fills them in from the cluster's
+# platform configuration at deploy time.
+cloudDomain: ""
+cloudPort: ""
+httpPort: ""
+disableHttps: ""
+certSecretName: ""
+
+platform:
+  # 1 rejects untrusted certificates; the entrypoint switches to 0 when the
+  # cluster uses a trusted certificate (CERT_MODE=https or acme).
+  tlsRejectUnauthorized: "1"
