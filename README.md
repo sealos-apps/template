@@ -59,6 +59,19 @@ metadata; pnpm remains the canonical package manager for the checked-in lockfile
 The v1, v1alpha and v2alpha template routes share the same refreshed catalog and
 category cache while preserving their existing response shapes.
 
+## CI publishing
+
+Pushes to `main` automatically publish runtime and cluster images for
+`linux/amd64` and `linux/arm64`, then upload both cluster archives and their MD5
+files to OSS under `ci/main/<short-sha>/`. Pushes of `v*` tags upload under
+`release/<tag>/`. These paths are relative to the repository variable `OSS_BUCKET`,
+which includes the bucket name and the `offline/sealos-apps/template` prefix.
+
+Manual workflow runs can enable `publish_images` to publish images or `upload_oss`
+to publish images and upload archives. Pull requests do not publish or upload.
+OSS uploads require the `OSS_ENDPOINT`, `OSS_ACCESS_KEY_ID`, and
+`OSS_ACCESS_KEY_SECRET` secrets and the `OSS_BUCKET` repository variable.
+
 ## Helm checks
 
 ```bash
