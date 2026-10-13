@@ -153,7 +153,8 @@ if [ -z "${TLS_REJECT_UNAUTHORIZED}" ]; then
       ;;
   esac
 fi
-AUTO_CONFIG_HELM_OPTS="${AUTO_CONFIG_HELM_OPTS} --set-string platform.tlsRejectUnauthorized=${TLS_REJECT_UNAUTHORIZED}"
+add_set_string platform.tlsRejectUnauthorized "${TLS_REJECT_UNAUTHORIZED}"
+add_set_string templateConfig.billingUrl "http://account-service.account-system.svc:2333"
 
 
 # ============================================================================

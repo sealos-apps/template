@@ -17,12 +17,6 @@ templateConfig:
   templateRepoBranch: "main"
   templateRepoPath: "template"
 
-  # Billing service endpoint.
-  # Important: the frontend talks to this URL for all billing operations.
-  # The default points at the in-cluster account-service; only override
-  # if you are running an external billing service.
-  billingUrl: "http://account-service.account-system.svc:2333"
-
   # Optional user-facing domain suffix for tenant sub-domains.
   userDomain: ""
 

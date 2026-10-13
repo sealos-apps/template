@@ -45,28 +45,23 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{- define "template.cloudDomain" -}}
-{{- default .Values.templateConfig.cloudDomain .Values.cloudDomain -}}
+{{- default  .Values.cloudDomain -}}
 {{- end }}
 
 {{- define "template.cloudPort" -}}
-{{- default .Values.templateConfig.cloudPort .Values.cloudPort -}}
+{{- default  .Values.cloudPort -}}
 {{- end }}
 
 {{- define "template.httpPort" -}}
-{{- default .Values.templateConfig.httpPort .Values.httpPort -}}
+{{- default   .Values.httpPort -}}
 {{- end }}
 
 {{- define "template.disableHttps" -}}
-{{- $rootDisableHttps := toString .Values.disableHttps -}}
-{{- if ne $rootDisableHttps "" -}}
-{{- $rootDisableHttps -}}
-{{- else -}}
-{{- toString .Values.templateConfig.disableHttps -}}
-{{- end -}}
+{{- default  .Values.disableHttps -}}
 {{- end }}
 
 {{- define "template.certSecretName" -}}
-{{- default .Values.templateConfig.certSecretName .Values.certSecretName -}}
+{{- default .Values.certSecretName -}}
 {{- end }}
 
 {{- define "template.port" -}}
