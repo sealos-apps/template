@@ -85,7 +85,6 @@ add_set_string templateConfig.guideEnabled "${guideEnabled:-}"
 add_set_string templateConfig.billingUrl "${billingUrl:-}"
 add_set_string templateConfig.enableReadmeFetch "${enableReadmeFetch:-}"
 add_set_string templateConfig.brandName "${brandName:-}"
-add_set_string templateConfig.forcedLanguage "${forcedLanguage:-}"
 add_set_string templateConfig.currencySymbol "${currencySymbol:-}"
 
 adopt_namespaced_resource() {

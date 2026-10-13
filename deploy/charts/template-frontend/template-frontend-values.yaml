@@ -29,5 +29,4 @@ templateConfig:
   billingUrl: "http://account-service.account-system.svc:2333"
   enableReadmeFetch: true
   brandName: "Sealos"
-  forcedLanguage: "en"
   currencySymbol: "shellCoin"

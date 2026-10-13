@@ -424,11 +424,9 @@ export default function EditApp({
 }
 
 export async function getServerSideProps(content: any) {
-  const forcedLanguage = Config().template.ui.forcedLanguage;
   const brandName = Config().template.ui.brandName;
 
   const locale =
-    forcedLanguage ||
     content?.req?.cookies?.NEXT_LOCALE ||
     compareFirstLanguages(content?.req?.headers?.['accept-language'] || 'zh');
   const appName = content?.query?.templateName || '';
