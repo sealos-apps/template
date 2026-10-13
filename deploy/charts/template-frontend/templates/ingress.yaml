@@ -1,23 +1,23 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "template-frontend.fullname" . }}
+  name: {{ include "template.fullname" . }}
   namespace: {{ .Release.Namespace }}
   annotations:
     kubernetes.io/ingress.class: {{ .Values.ingress.className | quote }}
     nginx.ingress.kubernetes.io/enable-cors: "true"
     nginx.ingress.kubernetes.io/cors-allow-methods: "PUT, GET, POST, DELETE, PATCH, OPTIONS"
-    nginx.ingress.kubernetes.io/cors-allow-origin: "{{ include "template-frontend.cloudOrigin" . }}, {{ include "template-frontend.wildcardCloudOrigin" . }}"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "{{ include "template.cloudOrigin" . }}, {{ include "template.wildcardCloudOrigin" . }}"
     nginx.ingress.kubernetes.io/cors-allow-credentials: "true"
     nginx.ingress.kubernetes.io/cors-max-age: "600"
     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
     nginx.ingress.kubernetes.io/configuration-snippet: |
       more_clear_headers "X-Frame-Options:";
-      more_set_headers "Content-Security-Policy: default-src * blob: data: *.{{ include "template-frontend.cloudDomain" . }}{{ include "template-frontend.portSuffix" . }} {{ include "template-frontend.cloudDomain" . }}{{ include "template-frontend.portSuffix" . }}; img-src * data: blob: resource: *.{{ include "template-frontend.cloudDomain" . }}{{ include "template-frontend.portSuffix" . }} {{ include "template-frontend.cloudDomain" . }}{{ include "template-frontend.portSuffix" . }}; connect-src * wss: blob: resource:; style-src 'self' 'unsafe-inline' blob: *.{{ include "template-frontend.cloudDomain" . }}{{ include "template-frontend.portSuffix" . }} {{ include "template-frontend.cloudDomain" . }}{{ include "template-frontend.portSuffix" . }} resource:; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: *.{{ include "template-frontend.cloudDomain" . }}{{ include "template-frontend.portSuffix" . }} {{ include "template-frontend.cloudDomain" . }}{{ include "template-frontend.portSuffix" . }} resource: *.baidu.com *.bdstatic.com js.stripe.com{{ if .Values.templateConfig.rybbitHost }} {{ .Values.templateConfig.rybbitHost }}{{ end }}; frame-src 'self' *.{{ include "template-frontend.cloudDomain" . }}{{ include "template-frontend.portSuffix" . }} {{ include "template-frontend.cloudDomain" . }}{{ include "template-frontend.portSuffix" . }} mailto: tel: weixin: mtt: *.baidu.com js.stripe.com; frame-ancestors 'self' {{ include "template-frontend.cloudOrigin" . }} {{ include "template-frontend.wildcardCloudOrigin" . }}";
+      more_set_headers "Content-Security-Policy: default-src * blob: data: *.{{ include "template.cloudDomain" . }}{{ include "template.portSuffix" . }} {{ include "template.cloudDomain" . }}{{ include "template.portSuffix" . }}; img-src * data: blob: resource: *.{{ include "template.cloudDomain" . }}{{ include "template.portSuffix" . }} {{ include "template.cloudDomain" . }}{{ include "template.portSuffix" . }}; connect-src * wss: blob: resource:; style-src 'self' 'unsafe-inline' blob: *.{{ include "template.cloudDomain" . }}{{ include "template.portSuffix" . }} {{ include "template.cloudDomain" . }}{{ include "template.portSuffix" . }} resource:; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: *.{{ include "template.cloudDomain" . }}{{ include "template.portSuffix" . }} {{ include "template.cloudDomain" . }}{{ include "template.portSuffix" . }} resource: *.baidu.com *.bdstatic.com js.stripe.com{{ if .Values.templateConfig.rybbitHost }} {{ .Values.templateConfig.rybbitHost }}{{ end }}; frame-src 'self' *.{{ include "template.cloudDomain" . }}{{ include "template.portSuffix" . }} {{ include "template.cloudDomain" . }}{{ include "template.portSuffix" . }} mailto: tel: weixin: mtt: *.baidu.com js.stripe.com; frame-ancestors 'self' {{ include "template.cloudOrigin" . }} {{ include "template.wildcardCloudOrigin" . }}";
       more_set_headers "X-Xss-Protection: 1; mode=block";
     higress.io/response-header-control-remove: X-Frame-Options
     higress.io/response-header-control-update: |
-      Content-Security-Policy "default-src * blob: data: *.{{ include "template-frontend.cloudDomain" . }}{{ include "template-frontend.portSuffix" . }} {{ include "template-frontend.cloudDomain" . }}{{ include "template-frontend.portSuffix" . }}; img-src * data: blob: resource: *.{{ include "template-frontend.cloudDomain" . }}{{ include "template-frontend.portSuffix" . }} {{ include "template-frontend.cloudDomain" . }}{{ include "template-frontend.portSuffix" . }}; connect-src * wss: blob: resource:; style-src 'self' 'unsafe-inline' blob: *.{{ include "template-frontend.cloudDomain" . }}{{ include "template-frontend.portSuffix" . }} {{ include "template-frontend.cloudDomain" . }}{{ include "template-frontend.portSuffix" . }} resource:; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: *.{{ include "template-frontend.cloudDomain" . }}{{ include "template-frontend.portSuffix" . }} {{ include "template-frontend.cloudDomain" . }}{{ include "template-frontend.portSuffix" . }} resource: *.baidu.com *.bdstatic.com js.stripe.com{{ if .Values.templateConfig.rybbitHost }} {{ .Values.templateConfig.rybbitHost }}{{ end }}; frame-src 'self' *.{{ include "template-frontend.cloudDomain" . }}{{ include "template-frontend.portSuffix" . }} {{ include "template-frontend.cloudDomain" . }}{{ include "template-frontend.portSuffix" . }} mailto: tel: weixin: mtt: *.baidu.com js.stripe.com; frame-ancestors 'self' {{ include "template-frontend.cloudOrigin" . }} {{ include "template-frontend.wildcardCloudOrigin" . }}"
+      Content-Security-Policy "default-src * blob: data: *.{{ include "template.cloudDomain" . }}{{ include "template.portSuffix" . }} {{ include "template.cloudDomain" . }}{{ include "template.portSuffix" . }}; img-src * data: blob: resource: *.{{ include "template.cloudDomain" . }}{{ include "template.portSuffix" . }} {{ include "template.cloudDomain" . }}{{ include "template.portSuffix" . }}; connect-src * wss: blob: resource:; style-src 'self' 'unsafe-inline' blob: *.{{ include "template.cloudDomain" . }}{{ include "template.portSuffix" . }} {{ include "template.cloudDomain" . }}{{ include "template.portSuffix" . }} resource:; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: *.{{ include "template.cloudDomain" . }}{{ include "template.portSuffix" . }} {{ include "template.cloudDomain" . }}{{ include "template.portSuffix" . }} resource: *.baidu.com *.bdstatic.com js.stripe.com{{ if .Values.templateConfig.rybbitHost }} {{ .Values.templateConfig.rybbitHost }}{{ end }}; frame-src 'self' *.{{ include "template.cloudDomain" . }}{{ include "template.portSuffix" . }} {{ include "template.cloudDomain" . }}{{ include "template.portSuffix" . }} mailto: tel: weixin: mtt: *.baidu.com js.stripe.com; frame-ancestors 'self' {{ include "template.cloudOrigin" . }} {{ include "template.wildcardCloudOrigin" . }}"
       X-Xss-Protection "1; mode=block"
     {{- with .Values.ingress.annotations }}
     {{- toYaml . | nindent 4 }}
@@ -25,19 +25,19 @@ metadata:
 spec:
   ingressClassName: {{ .Values.ingress.className | quote }}
   rules:
-    - host: {{ include "template-frontend.host" . | quote }}
+    - host: {{ include "template.host" . | quote }}
       http:
         paths:
           - pathType: Prefix
             path: /
             backend:
               service:
-                name: {{ include "template-frontend.fullname" . }}
+                name: {{ include "template.fullname" . }}
                 port:
                   number: {{ .Values.service.port }}
-  {{- if not (eq (include "template-frontend.disableHttps" .) "true") }}
+  {{- if not (eq (include "template.disableHttps" .) "true") }}
   tls:
     - hosts:
-        - {{ include "template-frontend.host" . | quote }}
-      secretName: {{ include "template-frontend.certSecretName" . | quote }}
+        - {{ include "template.host" . | quote }}
+      secretName: {{ include "template.certSecretName" . | quote }}
   {{- end }}
