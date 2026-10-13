@@ -177,8 +177,7 @@ export function getTemplateEnvs(namespace?: string): EnvResponse {
     SEALOS_SERVICE_ACCOUNT: namespace?.replace('ns-', '') || '',
     SHOW_AUTHOR: String(Config().template.features.showAuthor),
     DESKTOP_DOMAIN: Config().template.desktopDomain,
-    CURRENCY_SYMBOL: Config().template.ui.currencySymbol,
-    FORCED_LANGUAGE: Config().template.ui.forcedLanguage || 'en'
+    CURRENCY_SYMBOL: Config().template.ui.currencySymbol
   };
   return TemplateEnvs;
 }

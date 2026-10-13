@@ -90,10 +90,6 @@ const UiSchema = z
     brandName: z
       .string()
       .describe('Brand name used in page title, meta description, and UI headers'),
-    forcedLanguage: z
-      .string()
-      .optional()
-      .describe('Forced language code that overrides user language preference (e.g., "en", "zh")'),
     currencySymbol: z
       .enum(['shellCoin', 'cny', 'usd'])
       .describe('Currency symbol type displayed in price components (shellCoin/cny/usd)'),

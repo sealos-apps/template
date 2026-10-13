@@ -315,11 +315,9 @@ export default function AppList({
 }
 
 export async function getServerSideProps(content: any) {
-  const forcedLanguage = Config().template.ui.forcedLanguage;
   const brandName = Config().template.ui.brandName;
 
   const local: string =
-    forcedLanguage ||
     content?.req?.cookies?.NEXT_LOCALE ||
     compareFirstLanguages(content?.req?.headers?.['accept-language'] || 'en');
 

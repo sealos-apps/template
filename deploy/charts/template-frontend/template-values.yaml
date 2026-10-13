@@ -26,7 +26,6 @@ templateConfig:
 
   # Branding.
   brandName: "Sealos"
-  forcedLanguage: "en"
   currencySymbol: "shellCoin"
 
   # Rybbit analytics (self-hosted). Empty disables tracking.
