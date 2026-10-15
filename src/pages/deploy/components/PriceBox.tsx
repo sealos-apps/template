@@ -8,7 +8,7 @@ import { CurrencySymbol } from '@labring/sealos-ui';
 import MyTooltip from '@/components/MyTooltip';
 import { type ResourceUsage } from '@/utils/usage';
 import { PriceIcon } from '@/components/icons/PriceIcon';
-import { useClientAppConfig } from '@/hooks/useClientAppConfig';
+import { useHostConfigStore } from '@/store/hostConfig';
 
 export const usePriceCalculation = ({ cpu, memory, storage, nodeport }: ResourceUsage) => {
   const { userSourcePrice } = useUserStore();
@@ -65,7 +65,7 @@ export const usePriceCalculation = ({ cpu, memory, storage, nodeport }: Resource
 const PriceBox = (props: ResourceUsage) => {
   const { t } = useTranslation();
   const priceList = usePriceCalculation(props);
-  const clientAppConfig = useClientAppConfig();
+  const currencySymbol = useHostConfigStore((state) => state.currencySymbol);
 
   return (
     <Box bg={'#FFF'} borderRadius={'10px'}>
@@ -108,7 +108,7 @@ const PriceBox = (props: ResourceUsage) => {
               )}
             </Flex>
             <Flex ml={'auto'} minW={'45px'} alignItems={'center'} gap={'4px'} whiteSpace={'nowrap'}>
-              <CurrencySymbol type={clientAppConfig.currencySymbol} />
+              <CurrencySymbol type={currencySymbol} />
               {item.value}
             </Flex>
           </Flex>

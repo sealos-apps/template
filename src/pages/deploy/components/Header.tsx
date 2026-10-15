@@ -34,7 +34,7 @@ import { X } from 'lucide-react';
 import { startDriver, quitGuideDriverObj } from '@/hooks/driver';
 import { track } from '@/utils/analytics';
 import useSessionStore from '@/store/session';
-import { useClientAppConfig } from '@/hooks/useClientAppConfig';
+import { useHostConfigStore } from '@/store/hostConfig';
 
 const Header = ({
   appName,
@@ -58,7 +58,7 @@ const Header = ({
   const { t, i18n } = useTranslation();
   const { copyData } = useCopyData();
   const { session } = useSessionStore();
-  const clientAppConfig = useClientAppConfig();
+  const currencySymbol = useHostConfigStore((state) => state.currencySymbol);
 
   const handleExportYaml = useCallback(async () => {
     const exportYamlString = yamlList?.map((i) => i.value).join('---\n');
@@ -300,7 +300,7 @@ const Header = ({
               flexShrink={'0'}
               gap={'4px'}
             >
-              <CurrencySymbol type={clientAppConfig.currencySymbol} />
+              <CurrencySymbol type={currencySymbol} />
               {priceList?.[priceList.length - 1]?.value}
               <Text fontSize={'16px'}>/{t('Day')}</Text>
               <MyIcon name="help" width={'16px'} height={'16px'} color={'grayModern.500'}></MyIcon>

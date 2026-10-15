@@ -31,7 +31,6 @@ describe('template repository refresh lock', () => {
       template: {
         ui: {
           brandName: 'Sealos',
-          currencySymbol: 'shellCoin',
           meta: { canonicalUrl: '', customScripts: [] },
           carousel: { enabled: false, slides: [] }
         },
