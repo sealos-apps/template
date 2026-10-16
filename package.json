@@ -33,7 +33,7 @@
     "@next/font": "13.5.9",
     "@replit/codemirror-vscode-keymap": "^6.0.2",
     "@scalar/api-reference-react": "^0.8.36",
-    "@labring/sealos-desktop-sdk": "0.1.23",
+    "@labring/sealos-desktop-sdk": "0.1.24",
     "@labring/sealos-driver-sdk": "1.0.0",
     "@labring/sealos-gtm-sdk": "1.0.1",
     "@labring/sealos-shared-sdk": "1.0.2",

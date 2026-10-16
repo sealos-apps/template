@@ -12,7 +12,6 @@ export function getClientAppConfigFromConfig(categories?: TemplateCategory[]): C
   return validateClientAppConfigOrThrow(ClientAppConfigSchema, {
     brandName: fullConfig.template.ui.brandName,
     desktopDomain: fullConfig.template.desktopDomain,
-    currencySymbol: fullConfig.template.ui.currencySymbol,
     categories: categories ?? fullConfig.template.categories,
     showAuthor: fullConfig.template.features.showAuthor,
     carousel: fullConfig.template.ui.carousel

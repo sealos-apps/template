@@ -74,6 +74,14 @@ OSS uploads require the `OSS_ENDPOINT`, `OSS_ACCESS_KEY_ID`, and
 
 ## Helm checks
 
+Price currency symbols come from Desktop through `sealosApp.getHostConfig()`
+(`@labring/sealos-desktop-sdk` 0.1.24). Older hosts that omit the field and
+standalone mode fall back to `shellCoin`. Upgrade Desktop before Template on
+installations using another currency. Remove the former
+`template.ui.currencySymbol` field from mounted configuration when upgrading;
+the chart no longer generates it. The former template variable
+`CURRENCY_SYMBOL` is also no longer supplied.
+
 ```bash
 helm lint deploy/charts/template-frontend
 helm template template-frontend deploy/charts/template-frontend

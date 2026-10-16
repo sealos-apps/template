@@ -8,7 +8,6 @@ cloud:
 template:
     ui:
         brandName: Sealos
-        currencySymbol: shellCoin
         meta:
             canonicalUrl: https://template.example.org
             customScripts: []

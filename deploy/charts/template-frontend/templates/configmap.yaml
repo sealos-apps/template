@@ -17,7 +17,6 @@ data:
     template:
         ui:
             brandName: {{ .Values.templateConfig.brandName | quote }}
-            currencySymbol: {{ .Values.templateConfig.currencySymbol | quote }}
             meta:
                 canonicalUrl: {{ include "template.appUrl" . | quote }}
                 customScripts: []

@@ -13,6 +13,7 @@ import { useEffect, useState, useCallback, ComponentProps } from 'react';
 import { EVENT_NAME } from '@labring/sealos-desktop-sdk';
 import { createSealosApp, sealosApp } from '@labring/sealos-desktop-sdk/app';
 import useSessionStore from '@/store/session';
+import { useHostConfigStore } from '@/store/hostConfig';
 import { useUserStore } from '@/store/user';
 import RybbitScript from '@/components/RybbitScript';
 import {
@@ -87,6 +88,7 @@ function AppContent({
   useEffect(() => {
     NProgress.start();
     const response = createSealosApp();
+    void useHostConfigStore.getState().loadHostConfig();
     (async () => {
       try {
         const res = await sealosApp.getSession();

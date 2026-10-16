@@ -90,9 +90,6 @@ const UiSchema = z
     brandName: z
       .string()
       .describe('Brand name used in page title, meta description, and UI headers'),
-    currencySymbol: z
-      .enum(['shellCoin', 'cny', 'usd'])
-      .describe('Currency symbol type displayed in price components (shellCoin/cny/usd)'),
     meta: MetaSchema.describe('SEO meta tags and custom script injection'),
     carousel: CarouselSchema.describe('Homepage carousel banner configuration')
   })
@@ -236,7 +233,6 @@ export const ClientAppConfigSchema = z
     carousel: CarouselSchema,
     categories: z.array(TemplateCategorySchema),
     showAuthor: z.boolean(),
-    currencySymbol: z.enum(['shellCoin', 'cny', 'usd']),
     desktopDomain: z.string()
   })
   .strict();

@@ -52,7 +52,6 @@ templateConfig:
   billingUrl: "http://account-service.account-system.svc:2333"
   enableReadmeFetch: true
   brandName: "Sealos"
-  currencySymbol: "shellCoin"
 
   # Rybbit Analytics (self-hosted); empty disables tracking
   rybbitHost: ""
