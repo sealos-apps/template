@@ -59,6 +59,56 @@ else
   echo "Warning: platform tools file not found at ${TOOLS_FILE}; platform defaults must be supplied explicitly." >&2
 fi
 
+# Keep the legacy namespace until the replacement has a working catalog.
+# Never uninstall its Helm release: it may still record shared App/RBAC objects
+# that have already been adopted by the new release.
+backup_legacy_template() {
+  if [ "${RELEASE_NAMESPACE}" = "template-frontend" ]; then return 0; fi
+  if ! kubectl get namespace template-frontend >/dev/null 2>&1; then return 0; fi
+
+  local persistent_resources
+  persistent_resources=$(kubectl get pvc,statefulset -n template-frontend -o name)
+  if [ -n "${persistent_resources}" ]; then
+    echo "Refusing automatic legacy cleanup: template-frontend contains PVCs or StatefulSets." >&2
+    return 1
+  fi
+
+  mkdir -p "${USER_VALUES_DIR}"
+  local backup_file="${USER_VALUES_DIR}/legacy-template-frontend-$(date +%Y%m%d%H%M%S)-$$.yaml.bak"
+  (umask 077; kubectl get deployment,service,ingress,cronjob,configmap,secret,serviceaccount,role,rolebinding \
+    -n template-frontend -o yaml > "${backup_file}")
+  echo "Legacy Template resources backed up to ${backup_file}"
+}
+
+cleanup_legacy_template() {
+  if [ "${RELEASE_NAMESPACE}" = "template-frontend" ]; then return 0; fi
+  if ! kubectl get namespace template-frontend >/dev/null 2>&1; then return 0; fi
+
+  # Readiness only validates config; require a non-empty catalog before retiring
+  # the old service. Probe every new replica directly, bypassing duplicate Ingresses.
+  local pods pod
+  pods=$(kubectl get pods -n "${RELEASE_NAMESPACE}" \
+    -l "app.kubernetes.io/instance=${RELEASE_NAME}" \
+    -o go-template='{{range .items}}{{if not .metadata.deletionTimestamp}}{{.metadata.name}}{{" "}}{{end}}{{end}}')
+  if [ -z "${pods}" ]; then
+    echo "No replacement Template pods found; keeping template-frontend." >&2
+    return 1
+  fi
+  for pod in ${pods}; do
+    kubectl exec -n "${RELEASE_NAMESPACE}" "${pod}" -c template -- node -e '
+      fetch("http://127.0.0.1:" + (process.env.PORT || "3000") + "/api/listTemplate",
+        {signal: AbortSignal.timeout(90000)})
+        .then(async response => {
+          const body = await response.json();
+          if (!response.ok || body.code !== 200 || !Array.isArray(body.data?.templates) ||
+              body.data.templates.length === 0) throw new Error("Template catalog is unavailable or empty");
+          console.log("Template catalog verified:", body.data.templates.length);
+        }).catch(error => { console.error(error.message); process.exit(1); });'
+  done
+
+  kubectl delete namespace template-frontend --ignore-not-found=true --wait=true --timeout=120s
+}
+
 
 # ============================================================================
 # SECTION 3: Helper functions
@@ -165,6 +215,8 @@ add_set_string templateConfig.billingUrl "http://account-service.account-system.
 # annotations before helm upgrade -i will accept them.
 # ============================================================================
 
+backup_legacy_template
+
 echo "Checking and adopting existing resources..."
 if kubectl get namespace "${RELEASE_NAMESPACE}" >/dev/null 2>&1; then
   kubectl label namespace "${RELEASE_NAMESPACE}" app.kubernetes.io/managed-by=Helm --overwrite >/dev/null 2>&1 || true
@@ -219,5 +271,9 @@ echo "Deploying Helm chart '${CHART_PATH}' as release '${RELEASE_NAME}' into nam
 helm upgrade -i "${RELEASE_NAME}" -n "${RELEASE_NAMESPACE}" --create-namespace "${CHART_PATH}" \
   "${HELM_VALUE_ARGS[@]}" \
   ${HELM_ARGS}
+
+kubectl rollout status deployment -n "${RELEASE_NAMESPACE}" \
+  -l "app.kubernetes.io/instance=${RELEASE_NAME}" --timeout=5m
+cleanup_legacy_template
 
 echo "Done. '${RELEASE_NAME}' is now running in namespace '${RELEASE_NAMESPACE}'."
