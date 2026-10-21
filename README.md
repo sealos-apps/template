@@ -88,13 +88,49 @@ helm template template-frontend deploy/charts/template-frontend
 bash -n deploy/template-frontend-entrypoint.sh
 ```
 
-The chart keeps the `template-frontend` release identity, config mount at
+The chart keeps the config mount at
 `/app/data/config.yaml`, and existing App/Service/Ingress contracts. Its readiness
 probe uses `/healthz` so repository refresh failures do not make a valid mounted
 configuration look unready. Platform HTTP/HTTPS values are accepted at the chart
 root (`cloudDomain`, `cloudPort`, `httpPort`, `disableHttps`, and `certSecretName`);
 the legacy nested aliases remain supported. The entrypoint reads user overrides
-from `/root/.sealos/cloud/values/apps/template-frontend/*-values.yaml` in sorted
-order and derives Node TLS verification from the platform certificate mode. Existing
-`/root/.sealos/cloud/values/core/template-frontend-values.yaml` values are loaded for
-backward compatibility and copied into the canonical `apps` directory when needed.
+from `/root/.sealos/cloud/values/apps/template/*-values.yaml` in sorted order and
+derives Node TLS verification from the platform certificate mode.
+
+### Retiring the legacy Template namespace
+
+The installer deploys release `template` in `template-system` by default. Before
+replacing the legacy `template-frontend` namespace, it saves its workload and
+configuration manifests (including Secrets) to a mode-0600
+`legacy-template-frontend-*.yaml.bak` file under
+`/root/.sealos/cloud/values/apps/template/`. Retain any required legacy settings in
+that directory's `*-values.yaml` before upgrading. In particular,
+`templateConfig.templateRepoPath` is the directory **inside** the Git repository;
+the default repository uses `template`, not `templates`.
+
+Installation statistics are read from the Pod's service-account namespace, matching
+the `template-static` CronJob's release namespace. Local development uses the active
+kubeconfig context namespace, or Kubernetes' `default` namespace when unspecified.
+
+Only after the new Deployment rolls out and every new Pod serves a non-empty
+`/api/listTemplate` catalog does the installer delete the old namespace. A failed
+deployment or catalog check keeps it intact. Cleanup skips an absent namespace or
+one equal to `RELEASE_NAMESPACE`, and refuses automatic migration if the old
+namespace contains PVCs or StatefulSets. Shared App and cluster RBAC resources are
+adopted by the new release; the old Helm release is not uninstalled, because it
+can still reference those shared resources. Gogs and user applications are outside
+the legacy namespace and are preserved.
+
+ConfigMap changes update the Deployment's `checksum/config` annotation, triggering
+a new rollout so the mounted `config.yaml` and startup configuration are refreshed.
+Git also follows `platform.tlsRejectUnauthorized`: `1` keeps certificate
+verification enabled (`GIT_SSL_NO_VERIFY=false`, the chart default); `0` allows
+platform self-signed repository certificates. The installer derives this existing
+setting from the platform certificate mode. Override it through
+`HELM_OPTS='--set-string platform.tlsRejectUnauthorized=1'`, or set
+`GIT_SSL_NO_VERIFY` directly when running outside Helm (see `.env.template`).
+Installer migration checks can be run without a cluster:
+
+```bash
+python3 deploy/tests/test_legacy_cleanup.py
+```

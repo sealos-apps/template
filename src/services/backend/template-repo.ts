@@ -171,9 +171,15 @@ const readFileList = (
 export async function GetTemplateStatic() {
   try {
     const defaultKC = K8sApiDefault();
+    // Kubernetes mounts the Pod namespace beside its service-account token.
+    // Outside a cluster, follow the active kubeconfig context instead.
+    const namespaceFile = '/var/run/secrets/kubernetes.io/serviceaccount/namespace';
+    const namespace = fs.existsSync(namespaceFile)
+      ? fs.readFileSync(namespaceFile, 'utf8').trim()
+      : defaultKC.getContextObject(defaultKC.getCurrentContext())?.namespace || 'default';
     const result = await defaultKC
       .makeApiClient(k8s.CoreV1Api)
-      .readNamespacedConfigMap('template-static', 'template-frontend');
+      .readNamespacedConfigMap('template-static', namespace);
 
     const inputString = result?.body?.data?.['install-count'] || '';
     const installCountArray = inputString.split(/\n/).filter(Boolean);
