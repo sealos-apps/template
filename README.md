@@ -67,6 +67,14 @@ files to OSS under `ci/main/<short-sha>/`. Pushes of `v*` tags upload under
 `release/<tag>/`. These paths are relative to the repository variable `OSS_BUCKET`,
 which includes the bucket name and the `offline/sealos-apps/template` prefix.
 
+Tag pushes also attach both cluster archives and their MD5 files to the GitHub
+Release after the cluster images are published. The workflow creates the release
+if needed, marks tags containing a hyphen (such as `v5.2.0-beta1`) as prereleases,
+and replaces matching attachments when rerun. Existing release notes are preserved.
+To attach artifacts from an existing successful build without rebuilding, manually
+run the workflow with `release_run_id` and `release_tag`. Leave these inputs empty
+for normal builds. The source run commit must match the release tag.
+
 Manual workflow runs can enable `publish_images` to publish images or `upload_oss`
 to publish images and upload archives. Pull requests do not publish or upload.
 OSS uploads require the `OSS_ENDPOINT`, `OSS_ACCESS_KEY_ID`, and
